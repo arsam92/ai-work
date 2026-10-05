@@ -1,0 +1,22 @@
+:root{--bg:#050805;--panel:#081108;--line:#1c5526;--green:#39ff14;--text:#eaffea;--muted:#8bb58d;--gold:#d7c98b}
+*{box-sizing:border-box}
+html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+#game-canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;z-index:10;pointer-events:none}
+.brand{position:absolute;top:18px;left:22px;font-size:18px;font-weight:900;letter-spacing:.28em;color:var(--green);text-shadow:0 0 16px #39ff1436}
+.sub{position:absolute;top:44px;left:22px;color:var(--muted);font-size:9px;letter-spacing:.16em}
+.mission{position:absolute;top:18px;right:22px;color:var(--text);font-size:10px;letter-spacing:.14em}
+.status{position:absolute;bottom:20px;left:22px;color:var(--muted);font-size:10px;letter-spacing:.08em}
+.prompt{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);padding:9px 13px;border:1px solid var(--green);background:#050a05dd;color:var(--green);font-weight:800;letter-spacing:.12em;min-width:190px;text-align:center}
+.dialogue{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:min(760px,90vw);background:#040804f2;border:1px solid var(--line);box-shadow:0 0 40px #0008;padding:20px;pointer-events:auto}
+.hidden{display:none}
+.dialogue-name{color:var(--green);font-size:11px;letter-spacing:.18em;font-weight:800}
+.dialogue-text{margin-top:10px;font:600 18px/1.5 Georgia,serif;color:var(--text)}
+.choices{margin-top:18px;display:grid;gap:8px}
+.choices button,.save-row button{border:1px solid var(--line);background:#081008;color:var(--text);padding:10px 12px;text-align:left;font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
+.choices button:hover,.save-row button:hover{border-color:var(--green);color:var(--green)}
+.save-row{position:absolute;top:74px;right:22px;display:flex;gap:6px;pointer-events:auto}
+.save-row button{padding:6px 9px;font-size:9px;letter-spacing:.1em}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;background:radial-gradient(circle at 50% 45%,transparent 40%,#0008 100%)}
+@media(max-width:700px){.dialogue{bottom:16px;padding:16px}.dialogue-text{font-size:16px}.mission{top:72px;left:22px;right:auto}.save-row{top:88px;right:22px}.status{font-size:9px}}
