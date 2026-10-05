@@ -2,6 +2,7 @@ import type { DialoguePresenter, DialogueShowMeta } from "../dialogue/DialogueSy
 import { readDialogueLog } from "../dialogue/DialogueSystem";
 import { Events, type EventBus } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
+import type { AnimationIntent } from "../animation/AnimationController";
 
 function formatGameClock(gameTimeSeconds: number): string {
   const total = Math.max(0, Math.floor(gameTimeSeconds));
@@ -29,7 +30,7 @@ export class GameUI implements DialoguePresenter {
   private selectedChoiceIndex = 0;
   private dialogueChoiceHandler: ((choiceId: string) => void) | null = null;
   private dialogueCancelHandler: (() => void) | null = null;
-  private dialogueIntentHandler: ((intent: string) => void) | null = null;
+  private dialogueIntentHandler: ((intent: AnimationIntent) => void) | null = null;
   private missionStatusTimer: number | null = null;
   private choicesBound = false;
 
@@ -186,7 +187,7 @@ export class GameUI implements DialoguePresenter {
     this.dialogueCancelHandler = handler;
   }
 
-  bindDialogueIntent(handler: (intent: string) => void): void {
+  bindDialogueIntent(handler: (intent: AnimationIntent) => void): void {
     this.dialogueIntentHandler = handler;
   }
 
