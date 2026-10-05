@@ -1,4 +1,5 @@
 import type { NPCState } from "./NPCState";
+import type { AnimationIntent } from "../animation/AnimationController";
 
 export type NPCAction =
   | "idle"
@@ -23,7 +24,7 @@ export interface NPCDecision {
   reason: string;
   targetId: string | null;
   confidence: number;
-  animationIntent: string;
+  animationIntent: AnimationIntent;
 }
 
 export interface SocialRequestContext {
