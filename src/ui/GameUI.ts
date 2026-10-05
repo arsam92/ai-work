@@ -1,4 +1,5 @@
 import type { DialoguePresenter } from "../dialogue/DialogueSystem";
+import { Events } from "../core/EventBus";
 import type { EventBus } from "../core/EventBus";
 import { Events } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
@@ -63,7 +64,7 @@ export class GameUI implements DialoguePresenter {
       window.setTimeout(() => this.refreshMission(), 2200);
     });
 
-    this.bus.on<boolean>("input.pointerlock", (locked) => {
+    this.bus.on<boolean>(Events.INPUT_POINTERLOCK, (locked) => {
       if (!this.dialogue.classList.contains("hidden")) return;
       this.status.textContent = locked
         ? "WASD MOVE · SHIFT RUN · E TALK · ESC RELEASE"
@@ -102,6 +103,10 @@ export class GameUI implements DialoguePresenter {
       const id = target.dataset.choiceId;
       if (id) handler(id);
     });
+  }
+
+  refresh(): void {
+    this.refreshMission();
   }
 
   private refreshMission(): void {
