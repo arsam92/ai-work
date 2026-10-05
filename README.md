@@ -108,6 +108,20 @@ The story is built around incomplete knowledge, relationships, memory, rumors an
 5. Missions should change relationships, information or world state.
 6. Visual fidelity is secondary to narrative and character behavior.
 
+## Special Thanks
+
+BLACK MILE is being developed with the support of several AI systems, each contributing in different ways.
+
+A special thank you to **Claude by Anthropic** for its contributions to architecture, contracts, code review and technical organization.
+
+Thank you to **GLM** for implementation support, technical analysis and helping turn systems into a playable build.
+
+And a **very special thank you to OpenAI** ❤️
+
+**OpenAI and ChatGPT** have been a major part of the BLACK MILE development journey — contributing to story and world-building, missions, gameplay systems, NPC and dialogue design, architecture, debugging and development decisions.
+
+This is ultimately an Arsam-led project, with AI serving as development partners and tools throughout the process.
+
 ## License
 
 MIT
