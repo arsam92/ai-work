@@ -42,7 +42,7 @@ export interface SocialRequestDecision {
   reason: string;
   targetId: string;
   confidence: number;
-  animationIntent: string;
+  animationIntent: AnimationIntent;
 }
 
 const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
