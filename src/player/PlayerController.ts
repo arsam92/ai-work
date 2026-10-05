@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import type { EventBus } from "../core/EventBus";
-import type { GameStore } from "../state/GameStore";
 
 export class PlayerController {
   readonly object = new THREE.Group();
@@ -10,7 +9,6 @@ export class PlayerController {
   private phase = 0;
 
   constructor(
-    private readonly store: GameStore,
     private readonly bus: EventBus,
     private readonly isDown: (action: "forward" | "back" | "left" | "right" | "run") => boolean,
     private readonly getCameraYaw: () => number
@@ -24,29 +22,27 @@ export class PlayerController {
 
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.72, 0.32), coat);
     torso.position.y = 1.2;
-
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 12), skin);
     head.position.y = 1.82;
 
-    const addLimb = (x: number, y: number, w: number, h: number, material: THREE.Material): THREE.Mesh => {
-      const geometry = new THREE.BoxGeometry(w, h, w);
-      geometry.translate(0, -h / 2, 0);
-      const limb = new THREE.Mesh(geometry, material);
-      limb.position.set(x, y, 0);
-      return limb;
+    const limb = (x: number, y: number, width: number, height: number, material: THREE.Material): THREE.Mesh => {
+      const geometry = new THREE.BoxGeometry(width, height, width);
+      geometry.translate(0, -height / 2, 0);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, 0);
+      return mesh;
     };
 
-    const armL = addLimb(-0.31, 1.48, 0.12, 0.6, coat);
-    const armR = addLimb(0.31, 1.48, 0.12, 0.6, coat);
-    const legL = addLimb(-0.13, 0.9, 0.16, 0.95, pants);
-    const legR = addLimb(0.13, 0.9, 0.16, 0.95, pants);
+    const armL = limb(-0.31, 1.48, 0.12, 0.6, coat);
+    const armR = limb(0.31, 1.48, 0.12, 0.6, coat);
+    const legL = limb(-0.13, 0.9, 0.16, 0.95, pants);
+    const legR = limb(0.13, 0.9, 0.16, 0.95, pants);
 
     [torso, head, armL, armR, legL, legR].forEach((mesh) => {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       this.body.add(mesh);
     });
-
     this.limbs.push(armL, armR, legL, legR);
   }
 
@@ -70,9 +66,9 @@ export class PlayerController {
     }
 
     const speed = this.isDown("run") ? 6 : 3.15;
-    const targetVelocity = new THREE.Vector3(mx * speed, 0, mz * speed);
+    const target = new THREE.Vector3(mx * speed, 0, mz * speed);
     const factor = 1 - Math.exp(-10 * dt);
-    this.velocity.lerp(targetVelocity, factor);
+    this.velocity.lerp(target, factor);
 
     this.object.position.x = THREE.MathUtils.clamp(this.object.position.x + this.velocity.x * dt, -5.4, 5.4);
     this.object.position.z = THREE.MathUtils.clamp(this.object.position.z + this.velocity.z * dt, -68, 68);
@@ -80,8 +76,8 @@ export class PlayerController {
     const horizontalSpeed = Math.hypot(this.velocity.x, this.velocity.z);
     if (horizontalSpeed > 0.15) {
       const targetHeading = Math.atan2(this.velocity.x, this.velocity.z);
-      const diff = THREE.MathUtils.euclideanModulo(targetHeading - this.object.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
-      this.object.rotation.y += diff * factor;
+      const difference = THREE.MathUtils.euclideanModulo(targetHeading - this.object.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
+      this.object.rotation.y += difference * factor;
     }
 
     this.phase += dt * (4 + horizontalSpeed * 1.2);
@@ -92,12 +88,6 @@ export class PlayerController {
     this.limbs[3].rotation.x = -swing;
     this.body.position.y = Math.abs(Math.cos(this.phase)) * 0.045 * Math.min(1, horizontalSpeed / 3);
 
-    this.store.update((state) => {
-      state.player.locationId = "black-mile";
-    });
-    this.bus.emit("player.moved", {
-      position: this.object.position.clone(),
-      speed: horizontalSpeed
-    });
+    this.bus.emit("player.moved", { position: this.object.position.clone(), speed: horizontalSpeed });
   }
 }
