@@ -1,0 +1,1900 @@
+BLACK MILE — GLM BATCH 1 CURRENT REPOSITORY CONTEXT
+Repository: arsam92/ai-work
+Branch: main
+Purpose: single plain-text bundle for GLM. The files below are the authoritative current versions.
+IMPORTANT: Do not use any previous GLM prototype or Phase 1 output as authoritative. Do not invent APIs. Do not modify locked contracts without explicit approval.
+
+================================================================================
+FILE: docs/CONTRACTS.md
+================================================================================
+# BLACK MILE — Locked Contracts
+
+These contracts are the stable interfaces between runtime systems. Implementations may change, but persistent data shapes and event names must remain compatible or be versioned and migrated.
+
+---
+
+## 1. Event Bus
+
+Canonical event names:
+
+- player.action.observed
+- player.moved
+- npc.memory.added
+- npc.relationship.changed
+- dialogue.started
+- dialogue.ended
+- dialogue.effect
+- mission.objective.updated
+- mission.completed
+- rumor.started
+- rumor.mutated
+- world.flag.changed
+- time.tick
+- save.requested
+- load.completed
+- state.changed
+- input.interact
+- input.pointerlock
+- input.look
+- input.wheel
+- interaction.available
+- interaction.used
+
+```ts
+export type EventHandler<T = unknown> = (payload: T) => void;
+
+export interface IEventBus {
+  on<T = unknown>(event: string, handler: EventHandler<T>): () => void;
+  once<T = unknown>(event: string, handler: EventHandler<T>): void;
+  emit<T = unknown>(event: string, payload?: T): void;
+  off(event: string, handler: EventHandler): void;
+  clear(): void;
+}
+```
+
+`src/core/EventBus.ts` is the canonical runtime implementation.
+
+Use events for notifications and explicit public interfaces for commands. Do not bypass module boundaries by importing private implementation details.
+
+---
+
+## 2. Serializable GameState
+
+```ts
+export interface GameState {
+  version: number;
+  gameTime: number;
+  player: PlayerState;
+  npcs: Record<string, NPCState>;
+  missions: MissionRuntimeState;
+  world: WorldState;
+  rumors: RumorNetworkState;
+  flags: Record<string, boolean | number | string>;
+}
+
+export interface PlayerState {
+  id: 'player';
+  locationId: string;
+  knownFacts: string[];
+  inventory: string[];
+  reputation: Record<string, number>;
+}
+
+export interface WorldState {
+  locations: Record<string, LocationState>;
+  activeEvents: string[];
+}
+
+export interface LocationState {
+  id: string;
+  name: string;
+  tags: string[];
+}
+
+export interface RumorNetworkState {
+  activeRumors: Rumor[];
+}
+
+export interface Rumor {
+  id: string;
+  content: string;
+  originEventId: string;
+  currentConfidence: number;
+  mutationHistory: string[];
+  knownBy: string[];
+}
+```
+
+All persistent fields must be plain JSON-serializable values.
+
+`CURRENT_GAME_STATE_VERSION` is currently 1.
+
+---
+
+## 3. NPC State
+
+```ts
+export interface NPCState {
+  npcId: string;
+  name: string;
+  archetype: string;
+  personality: {
+    openness: number;
+    conscientiousness: number;
+    extraversion: number;
+    agreeableness: number;
+    neuroticism: number;
+    traits: string[];
+  };
+  currentMood: {
+    primary: string;
+    intensity: number;
+    decayRate: number;
+  };
+  goals: NPCGoal[];
+  fears: string[];
+  secrets: NPCSecret[];
+  memories: NPCMemory[];
+  relationships: Record<string, Relationship>;
+  routine: {
+    currentActivity: string;
+    locationId: string;
+    schedule: Record<string, string>;
+  };
+  trustThreshold: number;
+  suspicionThreshold: number;
+  intelligenceLevel: number;
+  lastUpdated: number;
+}
+
+export interface NPCGoal {
+  goalId: string;
+  description: string;
+  priority: number;
+  deadline: number | null;
+  status: 'active' | 'suspended' | 'completed' | 'failed';
+}
+
+export interface NPCSecret {
+  secretId: string;
+  content: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  knownBy: string[];
+}
+
+export interface NPCMemory {
+  memoryId: string;
+  timestamp: number;
+  eventType: string;
+  subject: string;
+  description: string;
+  emotionalImpact: {
+    emotion: string;
+    intensity: number;
+  };
+  confidence: number;
+  source: string;
+  importance: number;
+  relevanceTags: string[];
+  decay: {
+    type: 'none' | 'linear' | 'exponential';
+    rate: number;
+    minConfidence: number;
+  };
+  linkedMemories: string[];
+}
+
+export interface Relationship {
+  targetId: string;
+  dimensions: {
+    trust: number;
+    fear: number;
+    respect: number;
+    anger: number;
+    loyalty: number;
+    affection: number;
+    suspicion: number;
+  };
+  historySummary: string;
+  lastSignificantEvent: string | null;
+  relationshipType: string;
+}
+```
+
+NPC memory and relationship mutation is owned by the NPC runtime.
+
+---
+
+## 4. Mission Data
+
+```ts
+export interface MissionDefinition {
+  missionId: string;
+  act: number;
+  title: string;
+  description: string;
+  prerequisites: {
+    flags?: string[];
+    missionsCompleted?: string[];
+    minRelationship?: { npcId: string; dimension: string; value: number }[];
+  };
+  objectives: MissionObjective[];
+  onComplete: MissionEffect[];
+  onFail?: MissionEffect[];
+  alternativeSolutions?: string[];
+}
+
+export interface MissionObjective {
+  objectiveId: string;
+  type: 'reach_location' | 'talk_to' | 'obtain_item' | 'witness_event' | 'custom';
+  target?: string;
+  description: string;
+  optional: boolean;
+  completed?: boolean;
+}
+
+export interface MissionEffect {
+  type: 'set_flag' | 'change_relationship' | 'add_memory' | 'unlock_mission' | 'start_rumor' | 'custom';
+  payload: Record<string, unknown>;
+}
+
+export interface MissionRuntimeState {
+  active: string[];
+  completed: string[];
+  failed: string[];
+  objectiveProgress: Record<string, Record<string, boolean>>;
+}
+```
+
+Mission content is data-driven. Story changes should not require rewriting engine code.
+
+---
+
+## 5. Dialogue State
+
+```ts
+export interface DialogueState {
+  conversationId: string;
+  participants: string[];
+  locationId: string;
+  startTime: number;
+  moodAtStart: Record<string, NPCState['currentMood']>;
+  activeTopics: string[];
+  promises: DialoguePromise[];
+  liesDetected: number;
+  playerReputationInContext: Record<string, number>;
+  canRefuse: boolean;
+  willLie: boolean;
+  willManipulate: boolean;
+  exitConditions: string[];
+}
+
+export interface DialoguePromise {
+  promiseId: string;
+  content: string;
+  deadline: number | null;
+  status: 'pending' | 'fulfilled' | 'broken';
+  madeBy: string;
+  madeTo: string;
+}
+
+export interface DialogueLine {
+  speakerId: string;
+  text: string;
+  tone: string;
+  animationIntent?: string;
+  effects?: MissionEffect[];
+}
+
+export interface DialogueChoice {
+  id: string;
+  text: string;
+  nextNodeId: string | null;
+  effects?: MissionEffect[];
+}
+
+export interface DialogueNode {
+  id: string;
+  speakerId: string;
+  text: string;
+  tone: string;
+  animationIntent?: string;
+  choices: DialogueChoice[];
+}
+
+export interface DialogueDefinition {
+  dialogueId: string;
+  npcId: string;
+  startNodeId: string;
+  nodes: Record<string, DialogueNode>;
+}
+```
+
+---
+
+## 6. Save / Load
+
+```ts
+export interface SaveFile {
+  meta: {
+    version: number;
+    timestamp: number;
+    playTime: number;
+    slotName: string;
+  };
+  state: GameState;
+}
+
+export interface ISaveSystem {
+  save(slot: string, state: GameState): Promise<void>;
+  load(slot: string): Promise<GameState>;
+  listSlots(): Promise<{ slot: string; meta: SaveFile['meta'] }[]>;
+  migrate(oldState: unknown, fromVersion: number, toVersion: number): GameState;
+}
+
+export const CURRENT_SAVE_VERSION = 1;
+```
+
+Any persistent GameState shape change requires a version bump and migration path.
+
+---
+
+## 7. Versioning Rule
+
+Contracts are API boundaries, not suggestions.
+
+Before changing a contract:
+1. identify the compatibility impact;
+2. update the consuming systems;
+3. add migration/tests where persistent state is affected;
+4. document the change.
+
+================================================================================
+FILE: docs/ARCHITECTURE.md
+================================================================================
+# BLACK MILE — Technical Architecture (Phase 1 Lock)
+
+## 1. Goals of this document
+
+- Provide a stable technical foundation for GLM / Claude implementation.
+- Prevent systems from tightly coupling to each other.
+- Make NPC intelligence (Grok design) integrable without rewriting story or behavior philosophy.
+- Keep the project browser-first and lightweight (graphics priority = 1%).
+
+## 2. High-level decisions
+
+| Decision              | Choice                          | Reason |
+|-----------------------|----------------------------------|--------|
+| Platform              | Browser-first                    | Easy collaboration, no native builds, fits low graphics priority |
+| 3D Renderer           | Three.js                         | Mature, lightweight, excellent for narrative games, easy to keep visuals simple |
+| Language              | TypeScript                       | Clear interfaces, good for contracts between systems |
+| Communication         | Event Bus + explicit interfaces  | Systems must not import each other's internals |
+| State                 | Single serializable GameState    | Enables reliable save/load and debugging |
+| NPC system            | Implements `docs/NPC_DESIGN.md`  | Grok owns the intelligence philosophy; architecture only provides the contract |
+
+## 3. Module boundaries
+
+```
+src/
+  core/          EventBus, GameTime, Logger, shared types
+  state/         GameState root + serialization helpers
+  world/         Locations, simple city simulation hooks, visibility queries
+  npc/           NPC runtime that follows NPC_DESIGN.md contracts
+  dialogue/      Dialogue manager (stateful, memory-aware)
+  missions/      Mission runtime + objective tracking
+  animation/     Animation contract + thin controller (no heavy animation system yet)
+  save/          Save/Load with versioning
+  render/        Minimal Three.js scene, camera, basic models
+```
+
+**Rule:** A module may only depend on:
+- `core`
+- its own public interfaces
+- the public contracts defined in `docs/CONTRACTS.md`
+
+It must never import private implementation details of another module.
+
+## 4. Core systems overview
+
+### 4.1 Event Bus
+Central pub/sub for loose coupling.
+
+Events are the primary way systems notify each other of changes (player action observed, relationship changed, mission completed, rumor started, etc.).
+
+### 4.2 Game State
+Single source of truth that can be serialized.
+Contains:
+- player
+- all important NPCs (full state)
+- active missions
+- world flags
+- rumor network snapshot
+- time
+- relationship matrix (or references)
+
+### 4.3 NPC System
+Implements the design in `NPC_DESIGN.md` and the schemas previously defined by Grok.
+Receives events → updates memory, relationships, mood, goals → emits behavior decisions and dialogue requests.
+
+### 4.4 Dialogue System
+Consumes NPC state + conversation context → produces dialogue lines, tone, exit conditions, new memories/promises.
+
+### 4.5 Mission System
+Data-driven. Missions change relationships, knowledge, world flags and unlock future content.
+Never treat missions as disposable errands.
+
+### 4.6 Animation System
+Thin layer. Receives high-level intents ("nervous", "avoid_eye_contact", "step_back") and maps them to available clips or procedural signals. Full animation authorship is out of scope for Phase 1.
+
+### 4.7 Save / Load
+Versioned snapshots of GameState. Must support migration between versions.
+
+## 5. Data flow (simplified)
+
+```
+Player Action / World Event
+        ↓
+   Event Bus
+        ↓
+┌───────┴────────┐
+│                │
+NPC System   Mission System
+│                │
+↓                ↓
+Memory / Rel.   Objectives / Flags
+│                │
+└───────┬────────┘
+        ↓
+  Dialogue System  ←→  Animation intents
+        ↓
+   Render (visual feedback)
+```
+
+## 6. Renderer choice justification
+
+No existing engine code was found in the repository.
+
+**Chosen: Three.js**
+
+Reasons:
+- Extremely well supported in browsers
+- Low overhead for a story-first game (we can use simple geometry + basic lighting)
+- Easy to replace later if needed
+- Excellent TypeScript support
+- Does not force high graphics fidelity (matches 1% priority)
+
+Alternatives considered (Babylon.js, PlayCanvas) are also valid but Three.js has the largest ecosystem and simplest integration for this phase.
+
+## 7. Phase 1 deliverables (this commit)
+
+- Architecture document (this file)
+- Locked contracts (`docs/CONTRACTS.md`)
+- Basic TypeScript interfaces for the six critical contracts
+- Folder scaffolding
+
+## 8. Current implementation status
+
+### Implemented
+- Vite + TypeScript project boot
+- Three.js renderer and simple Veyra scene
+- third-person player movement and camera
+- interaction range and input
+- dialogue runtime and UI
+- one NPC runtime with memory and multi-dimensional relationships
+- first data-driven mission: OLD KEYS
+- browser save/load contract implementation
+- procedural animation hook
+- EventBus and GameStore implementation
+- unit tests for EventBus, GameState, GameStore and MissionSystem
+- GitHub Actions CI for typecheck, tests and production build
+
+### Not yet complete
+- autonomous NPC schedules and full goal planner
+- robust knowledge graph and rumor propagation
+- full city simulation and interiors
+- complete campaign and side missions
+- advanced character animation and facial/body performance
+- combat, vehicles and police systems
+- browser end-to-end regression suite
+
+The repository is intentionally being built as a story-first vertical slice before expanding the world.
+
+================================================================================
+FILE: docs/NPC_RUNTIME_SPEC.md
+================================================================================
+# BLACK MILE — NPC RUNTIME SPECIFICATION
+
+## Purpose
+
+This document turns the NPC design into an implementation contract for the runtime.
+
+NPCs are autonomous, partial-information agents. They must never read the hidden truth of the game world directly.
+
+## State Ownership
+
+- NPCSystem owns NPC memory, relationships, mood and NPC-local state.
+- GameStore owns the serializable snapshot.
+- DialogueSystem requests effects through EventBus.
+- MissionSystem owns mission progress.
+- AnimationController consumes high-level animation intents.
+
+## Perception
+
+An observed event should include an observer list when possible.
+
+Suggested payload:
+
+```json
+{
+  "type": "PLAYER_ACTION",
+  "location": "black-mile",
+  "observedBy": ["june"],
+  "partialObservation": {
+    "june": "Elias argued with an unknown man and then walked toward the garage."
+  }
+}
+```
+
+If no observer list exists, the current runtime may use location as a temporary fallback. This fallback should be removed when world visibility becomes authoritative.
+
+## Memory
+
+Memories describe the NPC's belief, not the developer's hidden truth.
+
+Memory ranking should consider:
+
+`importance × confidence × emotional impact`
+
+Important memories persist longer.
+Low-confidence rumors decay faster.
+Conflicting memories may coexist.
+
+## Relationships
+
+Never collapse relationships into a single score.
+
+Required dimensions:
+
+- trust
+- fear
+- respect
+- anger
+- loyalty
+- affection
+- suspicion
+
+An NPC can hold contradictory feelings simultaneously.
+
+## Decision Model
+
+Decision priority:
+
+1. Survival and immediate fear
+2. Protect loved ones and critical secrets
+3. High-priority goals
+4. Strong emotions
+5. Relationship obligations
+6. Routine
+7. Curiosity
+
+An NPC should compare feasible actions rather than blindly follow one rule.
+
+## Intelligence Levels
+
+Intelligence affects:
+- ability to connect evidence
+- confidence calibration
+- planning depth
+- deception detection
+- goal prioritization
+
+Intelligence does not give additional knowledge.
+
+An intelligent NPC can make better use of limited information; it cannot magically know more.
+
+## Rumors
+
+Rumors are information with provenance and uncertainty.
+
+When a rumor spreads:
+
+source -> target -> transformed belief
+
+Confidence should change based on:
+- source trust
+- target intelligence
+- evidence
+- contradiction
+- emotional relevance
+
+## Dialogue
+
+Dialogue selection should inspect:
+- current mood
+- relationship dimensions
+- recent memories
+- active goals
+- known facts
+- rumors
+- location
+- time
+- social context
+
+NPCs can:
+- refuse
+- lie
+- manipulate
+- threaten
+- change topic
+- reveal information conditionally
+- remember promises
+
+## Runtime Output
+
+NPC behavior should resolve into a small actionable result, for example:
+
+```ts
+{
+  "action": "talk | leave | approach | avoid | call_for_help | investigate | work",
+  "reason": "protect_secret",
+  "targetId": "player",
+  "confidence": 0.78,
+  "animationIntent": "nervous"
+}
+```
+
+## Safety Invariants
+
+1. NPC cannot read hidden mission solution flags unless the NPC has legitimately learned the information.
+2. NPC cannot create impossible knowledge.
+3. Memory has a bounded size.
+4. Relationship values remain within their documented ranges.
+5. NPC decisions are deterministic from state unless a controlled random source is explicitly supplied.
+6. Dialogue and mission systems cannot mutate NPC state directly.
+7. Animation never changes story state.
+
+================================================================================
+FILE: package.json
+================================================================================
+{
+  "name": "black-mile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}
+
+================================================================================
+FILE: tsconfig.json
+================================================================================
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "tests", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+
+================================================================================
+FILE: vitest.config.ts
+================================================================================
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "node",
+    include: ["tests/**/*.test.ts"]
+  }
+});
+
+================================================================================
+FILE: src/core/EventBus.ts
+================================================================================
+export type EventHandler<T = unknown> = (payload: T) => void;
+
+export interface IEventBus {
+  on<T = unknown>(event: string, handler: EventHandler<T>): () => void;
+  once<T = unknown>(event: string, handler: EventHandler<T>): void;
+  emit<T = unknown>(event: string, payload?: T): void;
+  off(event: string, handler: EventHandler): void;
+  clear(): void;
+}
+
+export const Events = {
+  PLAYER_ACTION_OBSERVED: "player.action.observed",
+  PLAYER_MOVED: "player.moved",
+  NPC_MEMORY_ADDED: "npc.memory.added",
+  RELATIONSHIP_CHANGED: "npc.relationship.changed",
+  DIALOGUE_STARTED: "dialogue.started",
+  DIALOGUE_ENDED: "dialogue.ended",
+  DIALOGUE_EFFECT: "dialogue.effect",
+  MISSION_OBJECTIVE_UPDATED: "mission.objective.updated",
+  MISSION_COMPLETED: "mission.completed",
+  RUMOR_STARTED: "rumor.started",
+  RUMOR_MUTATED: "rumor.mutated",
+  WORLD_FLAG_CHANGED: "world.flag.changed",
+  GAME_TIME_TICK: "time.tick",
+  SAVE_REQUESTED: "save.requested",
+  LOAD_COMPLETED: "load.completed",
+  STATE_CHANGED: "state.changed",
+  INPUT_INTERACT: "input.interact",
+  INPUT_POINTERLOCK: "input.pointerlock",
+  INPUT_LOOK: "input.look",
+  INPUT_WHEEL: "input.wheel",
+  INTERACTION_AVAILABLE: "interaction.available",
+  INTERACTION_USED: "interaction.used"
+} as const;
+
+export type EventName = typeof Events[keyof typeof Events];
+
+export class EventBus implements IEventBus {
+  private readonly listeners = new Map<string, Set<EventHandler<unknown>>>();
+  private readonly onceWrappers = new Map<string, Map<EventHandler<unknown>, EventHandler<unknown>>>();
+
+  on<T = unknown>(event: string, handler: EventHandler<T>): () => void {
+    const listener = handler as EventHandler<unknown>;
+    let set = this.listeners.get(event);
+    if (!set) { set = new Set(); this.listeners.set(event, set); }
+    set.add(listener);
+    return () => this.off(event, handler as EventHandler);
+  }
+
+  once<T = unknown>(event: string, handler: EventHandler<T>): void {
+    const original = handler as EventHandler<unknown>;
+    const wrapper: EventHandler<unknown> = (payload) => {
+      this.off(event, original);
+      original(payload);
+    };
+    let wrappers = this.onceWrappers.get(event);
+    if (!wrappers) { wrappers = new Map(); this.onceWrappers.set(event, wrappers); }
+    wrappers.set(original, wrapper);
+    this.on(event, wrapper);
+  }
+
+  emit<T = unknown>(event: string, payload?: T): void {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    [...set].forEach((handler) => handler(payload as unknown));
+  }
+
+  off(event: string, handler: EventHandler): void {
+    const set = this.listeners.get(event);
+    const listener = handler as EventHandler<unknown>;
+    const wrapper = this.onceWrappers.get(event)?.get(listener);
+    if (wrapper) {
+      set?.delete(wrapper);
+      this.onceWrappers.get(event)?.delete(listener);
+    } else {
+      set?.delete(listener);
+    }
+    if (set?.size === 0) this.listeners.delete(event);
+    const wrappers = this.onceWrappers.get(event);
+    if (wrappers?.size === 0) this.onceWrappers.delete(event);
+  }
+
+  clear(): void {
+    this.listeners.clear();
+    this.onceWrappers.clear();
+  }
+}
+
+================================================================================
+FILE: src/core/Input.ts
+================================================================================
+import type { EventBus } from "./EventBus";
+import { Events } from "./EventBus";
+
+type Action = "forward" | "back" | "left" | "right" | "run";
+
+export class Input {
+  private readonly keys = new Set<string>();
+  private pointerLocked = false;
+
+  constructor(private readonly bus: EventBus) {}
+
+  attach(target: HTMLElement): void {
+    const down = (event: KeyboardEvent): void => {
+      this.keys.add(event.code);
+      if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","ShiftLeft","ShiftRight","KeyE"].includes(event.code)) {
+        event.preventDefault();
+      }
+      if (event.code === "KeyE" && !event.repeat) this.bus.emit(Events.INPUT_INTERACT);
+    };
+
+    const up = (event: KeyboardEvent): void => {
+      this.keys.delete(event.code);
+    };
+
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", () => this.keys.clear());
+
+    target.addEventListener("click", () => {
+      if (document.pointerLockElement !== target) {
+        void target.requestPointerLock();
+      }
+    });
+
+    document.addEventListener("pointerlockchange", () => {
+      this.pointerLocked = document.pointerLockElement === target;
+      this.bus.emit(Events.INPUT_POINTERLOCK, this.pointerLocked);
+    });
+
+    document.addEventListener("mousemove", (event) => {
+      if (!this.pointerLocked) return;
+      this.bus.emit(Events.INPUT_LOOK, { dx: event.movementX, dy: event.movementY });
+    });
+
+    target.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      this.bus.emit(Events.INPUT_WHEEL, event.deltaY);
+    }, { passive: false });
+  }
+
+  isDown(action: Action): boolean {
+    const map: Record<Action, string[]> = {
+      forward: ["KeyW", "ArrowUp"],
+      back: ["KeyS", "ArrowDown"],
+      left: ["KeyA", "ArrowLeft"],
+      right: ["ArrowRight", "ArrowRight"],
+      run: ["ShiftLeft", "ShiftRight"]
+    };
+    return map[action].some((key) => this.keys.has(key));
+  }
+}
+
+================================================================================
+FILE: src/state/GameState.ts
+================================================================================
+import type { NPCState } from "../npc/NPCState";
+import type { MissionRuntimeState } from "../missions/MissionSchema";
+
+export interface GameState {
+  version: number;
+  gameTime: number;
+  player: PlayerState;
+  npcs: Record<string, NPCState>;
+  missions: MissionRuntimeState;
+  world: WorldState;
+  rumors: RumorNetworkState;
+  flags: Record<string, boolean | number | string>;
+}
+
+export interface PlayerState {
+  id: "player";
+  locationId: string;
+  knownFacts: string[];
+  inventory: string[];
+  reputation: Record<string, number>;
+}
+
+export interface WorldState {
+  locations: Record<string, LocationState>;
+  activeEvents: string[];
+}
+
+export interface LocationState {
+  id: string;
+  name: string;
+  tags: string[];
+}
+
+export interface RumorNetworkState {
+  activeRumors: Rumor[];
+}
+
+export interface Rumor {
+  id: string;
+  content: string;
+  originEventId: string;
+  currentConfidence: number;
+  mutationHistory: string[];
+  knownBy: string[];
+}
+
+export const CURRENT_GAME_STATE_VERSION = 1;
+
+export function createInitialGameState(): GameState {
+  return {
+    version: CURRENT_GAME_STATE_VERSION,
+    gameTime: 20 * 60,
+    player: {
+      id: "player",
+      locationId: "black-mile",
+      knownFacts: [],
+      inventory: [],
+      reputation: {}
+    },
+    npcs: {},
+    missions: {
+      active: [],
+      completed: [],
+      failed: [],
+      objectiveProgress: {}
+    },
+    world: {
+      locations: {
+        "black-mile": {
+          id: "black-mile",
+          name: "Black Mile",
+          tags: ["industrial", "night", "starting-area"]
+        },
+        garage: {
+          id: "garage",
+          name: "June's Garage",
+          tags: ["safehouse", "mechanic"]
+        }
+      },
+      activeEvents: []
+    },
+    rumors: {
+      activeRumors: []
+    },
+    flags: {
+      story_intro_started: true
+    }
+  };
+}
+
+================================================================================
+FILE: src/state/GameStore.ts
+================================================================================
+import type { EventBus } from "../core/EventBus";
+import type { GameState } from "./GameState";
+
+export type StateListener = (state: GameState) => void;
+
+export class GameStore {
+  private state: GameState;
+  private readonly listeners = new Set<StateListener>();
+  private readonly bus?: EventBus;
+
+  constructor(initialState: GameState, bus?: EventBus) {
+    this.state = structuredClone(initialState);
+    this.bus = bus;
+  }
+
+  getState(): GameState {
+    return this.state;
+  }
+
+  replace(nextState: GameState): void {
+    this.state = structuredClone(nextState);
+    this.notify();
+  }
+
+  update(mutator: (state: GameState) => void): void {
+    const draft = structuredClone(this.state);
+    mutator(draft);
+    this.state = draft;
+    this.notify();
+  }
+
+  subscribe(listener: StateListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    this.listeners.forEach((listener) => listener(this.state));
+    this.bus?.emit("state.changed", this.state);
+  }
+}
+
+================================================================================
+FILE: src/save/SaveSystem.ts
+================================================================================
+import type { GameState } from "../state/GameState";
+
+export interface SaveFile {
+  meta: { version: number; timestamp: number; playTime: number; slotName: string };
+  state: GameState;
+}
+
+export interface ISaveSystem {
+  save(slot: string, state: GameState): Promise<void>;
+  load(slot: string): Promise<GameState>;
+  listSlots(): Promise<{ slot: string; meta: SaveFile["meta"] }[]>;
+  migrate(oldState: unknown, fromVersion: number, toVersion: number): GameState;
+}
+
+export const CURRENT_SAVE_VERSION = 1;
+
+export class BrowserSaveSystem implements ISaveSystem {
+  private storage(): Storage {
+    if (typeof localStorage === "undefined") throw new Error("Save system requires a browser localStorage.");
+    return localStorage;
+  }
+
+  private key(slot: string): string { return `black-mile.save.${slot}`; }
+
+  async save(slot: string, state: GameState): Promise<void> {
+    if (!slot.trim()) throw new Error("Save slot is required.");
+    if (state.version !== CURRENT_SAVE_VERSION) throw new Error(`Unsupported save version: ${state.version}`);
+    const snapshot = structuredClone(state);
+    const file: SaveFile = {
+      meta: { version: CURRENT_SAVE_VERSION, timestamp: Date.now(), playTime: snapshot.gameTime, slotName: slot },
+      state: snapshot
+    };
+    this.storage().setItem(this.key(slot), JSON.stringify(file));
+  }
+
+  async load(slot: string): Promise<GameState> {
+    const raw = this.storage().getItem(this.key(slot));
+    if (!raw) throw new Error(`Save slot "${slot}" does not exist.`);
+    let parsed: SaveFile;
+    try { parsed = JSON.parse(raw) as SaveFile; }
+    catch { throw new Error("Save data is corrupted."); }
+    return this.migrate(parsed.state, parsed.meta.version, CURRENT_SAVE_VERSION);
+  }
+
+  async listSlots(): Promise<{ slot: string; meta: SaveFile["meta"] }[]> {
+    const storage = this.storage();
+    const slots: { slot: string; meta: SaveFile["meta"] }[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (!key?.startsWith("black-mile.save.")) continue;
+      try {
+        const data = JSON.parse(storage.getItem(key) ?? "") as SaveFile;
+        slots.push({ slot: key.slice("black-mile.save.".length), meta: data.meta });
+      } catch { /* ignore broken slots in the listing */ }
+    }
+    return slots.sort((a, b) => b.meta.timestamp - a.meta.timestamp);
+  }
+
+  migrate(oldState: unknown, fromVersion: number, toVersion: number): GameState {
+    if (fromVersion !== toVersion) throw new Error(`No migration from v${fromVersion} to v${toVersion}.`);
+    if (!oldState || typeof oldState !== "object") throw new Error("Invalid save state.");
+    return structuredClone(oldState as GameState);
+  }
+}
+
+================================================================================
+FILE: src/dialogue/DialogueState.ts
+================================================================================
+import type { NPCState } from "../npc/NPCState";
+import type { GameEffect } from "../core/Effects";
+
+export interface DialogueState {
+  conversationId: string;
+  participants: string[];
+  locationId: string;
+  startTime: number;
+  moodAtStart: Record<string, NPCState["currentMood"]>;
+  activeTopics: string[];
+  promises: DialoguePromise[];
+  liesDetected: number;
+  playerReputationInContext: Record<string, number>;
+  canRefuse: boolean;
+  willLie: boolean;
+  willManipulate: boolean;
+  exitConditions: string[];
+}
+
+export interface DialoguePromise {
+  promiseId: string;
+  content: string;
+  deadline: number | null;
+  status: "pending" | "fulfilled" | "broken";
+  madeBy: string;
+  madeTo: string;
+}
+
+export interface DialogueLine {
+  speakerId: string;
+  text: string;
+  tone: string;
+  animationIntent?: string;
+  effects?: GameEffect[];
+}
+
+export interface DialogueChoice {
+  id: string;
+  text: string;
+  nextNodeId: string | null;
+  effects?: GameEffect[];
+}
+
+export interface DialogueNode {
+  id: string;
+  speakerId: string;
+  text: string;
+  tone: string;
+  animationIntent?: string;
+  choices: DialogueChoice[];
+}
+
+export interface DialogueDefinition {
+  dialogueId: string;
+  npcId: string;
+  startNodeId: string;
+  nodes: Record<string, DialogueNode>;
+}
+
+================================================================================
+FILE: src/dialogue/DialogueSystem.ts
+================================================================================
+import type { EventBus } from "../core/EventBus";
+import type { GameStore } from "../state/GameStore";
+import type { GameEffect } from "../core/Effects";
+import type { DialogueDefinition, DialogueState } from "./DialogueState";
+
+export interface DialoguePresenter {
+  show(title: string, text: string, choices: { id: string; text: string }[]): void;
+  hide(): void;
+}
+
+export class DialogueSystem {
+  private active: DialogueState | null = null;
+  private definition: DialogueDefinition | null = null;
+  private currentNodeId: string | null = null;
+
+  constructor(
+    private readonly store: GameStore,
+    private readonly bus: EventBus,
+    private readonly presenter: DialoguePresenter
+  ) {}
+
+  start(definition: DialogueDefinition): void {
+    this.definition = definition;
+    this.currentNodeId = definition.startNodeId;
+    this.active = {
+      conversationId: definition.dialogueId,
+      participants: ["player", definition.npcId],
+      locationId: this.store.getState().player.locationId,
+      startTime: this.store.getState().gameTime,
+      moodAtStart: {},
+      activeTopics: [],
+      promises: [],
+      liesDetected: 0,
+      playerReputationInContext: {},
+      canRefuse: true,
+      willLie: false,
+      willManipulate: false,
+      exitConditions: []
+    };
+    this.bus.emit("dialogue.started", this.active);
+    this.showCurrentNode();
+  }
+
+  choose(choiceId: string): void {
+    if (!this.definition || !this.currentNodeId || !this.active) return;
+    const node = this.definition.nodes[this.currentNodeId];
+    if (!node) { this.end(); return; }
+    const choice = node.choices.find((item) => item.id === choiceId);
+    if (!choice) return;
+
+    for (const effect of choice.effects ?? []) {
+      this.applyLocalEffect(effect);
+      this.bus.emit("dialogue.effect", { npcId: this.definition.npcId, effect });
+    }
+
+    if (choice.nextNodeId === null) { this.end(); return; }
+    this.currentNodeId = choice.nextNodeId;
+    this.showCurrentNode();
+  }
+
+  end(): void {
+    if (!this.active) return;
+    const finished = this.active;
+    this.active = null;
+    this.definition = null;
+    this.currentNodeId = null;
+    this.presenter.hide();
+    this.bus.emit("dialogue.ended", finished);
+  }
+
+  isActive(): boolean { return this.active !== null; }
+
+  private applyLocalEffect(effect: GameEffect): void {
+    if (effect.type !== "set_flag") return;
+    this.store.update((state) => {
+      state.flags[effect.payload.key] = effect.payload.value;
+    });
+  }
+
+  private showCurrentNode(): void {
+    if (!this.definition || !this.currentNodeId) return;
+    const node = this.definition.nodes[this.currentNodeId];
+    if (!node) { this.end(); return; }
+    this.presenter.show(
+      node.speakerId === "player" ? "YOU" : node.speakerId,
+      node.text,
+      node.choices.map((choice) => ({ id: choice.id, text: choice.text }))
+    );
+  }
+}
+
+================================================================================
+FILE: data/dialogue/june-intro.json
+================================================================================
+{
+  "dialogueId": "june-intro",
+  "npcId": "june",
+  "startNodeId": "start",
+  "nodes": {
+    "start": {
+      "id": "start",
+      "speakerId": "june",
+      "text": "Elias? ...I knew the city would drag you back eventually.",
+      "tone": "guarded",
+      "animationIntent": "nervous",
+      "choices": [
+        { "id": "calm", "text": "I need to talk. Something happened to Jonah.", "nextNodeId": "jonah", "effects": [] },
+        { "id": "pressure", "text": "Someone searched your garage. What are you hiding?", "nextNodeId": "pressure", "effects": [] }
+      ]
+    },
+    "jonah": {
+      "id": "jonah",
+      "speakerId": "june",
+      "text": "Jonah came here two nights ago. He asked about an old set of keys. Then somebody came looking for the same thing.",
+      "tone": "concerned",
+      "animationIntent": "nervous",
+      "choices": [
+        { "id": "ask-keys", "text": "What keys?", "nextNodeId": "keys", "effects": [] },
+        { "id": "promise", "text": "I'll keep you out of this. Tell me what you know.", "nextNodeId": "keys", "effects": [
+          { "type": "set_flag", "payload": { "key": "june_promise_made", "value": true } }
+        ] }
+      ]
+    },
+    "pressure": {
+      "id": "pressure",
+      "speakerId": "june",
+      "text": "You disappear for years, come back angry, and start asking questions like you still own this place? No. Slow down.",
+      "tone": "angry",
+      "animationIntent": "step_back",
+      "choices": [
+        { "id": "apologize", "text": "You're right. I should have asked first.", "nextNodeId": "jonah", "effects": [] },
+        { "id": "leave", "text": "Fine. I'll find the answers somewhere else.", "nextNodeId": null, "effects": [] }
+      ]
+    },
+    "keys": {
+      "id": "keys",
+      "speakerId": "june",
+      "text": "Old ignition keys. They belonged to a delivery van tied to Black Mile. Jonah said one of them opens a storage cage.",
+      "tone": "quiet",
+      "animationIntent": "avoid_eye_contact",
+      "choices": [
+        { "id": "where", "text": "Where is the cage?", "nextNodeId": "end", "effects": [
+          { "type": "set_flag", "payload": { "key": "june_old_keys_lead", "value": true } }
+        ] }
+      ]
+    },
+    "end": {
+      "id": "end",
+      "speakerId": "june",
+      "text": "Behind the railway yard. And Elias... don't make me regret helping you again.",
+      "tone": "worried",
+      "animationIntent": "avoid_eye_contact",
+      "choices": [
+        { "id": "goodbye", "text": "I won't.", "nextNodeId": null, "effects": [] }
+      ]
+    }
+  }
+}
+
+================================================================================
+FILE: src/npc/NPCSystem.ts
+================================================================================
+import type { EventBus } from "../core/EventBus";
+import { Events } from "../core/EventBus";
+import type { GameStore } from "../state/GameStore";
+import type { GameEffect } from "../core/Effects";
+import type { NPCMemory, NPCState, Relationship } from "./NPCState";
+
+export class NPCSystem {
+  private readonly npcStates = new Map<string, NPCState>();
+
+  constructor(private readonly store: GameStore, private readonly bus: EventBus) {
+    this.bus.on<{ type: string; actors: string[]; location: string; payload?: Record<string, unknown> }>(Events.PLAYER_ACTION_OBSERVED, (event) => this.onPlayerAction(event));
+    this.bus.on<{ npcId: string; effect: GameEffect }>("dialogue.effect", ({ npcId, effect }) => this.applyDialogueEffect(npcId, effect));
+  }
+
+  addNPC(state: NPCState): void {
+    const copy = structuredClone(state);
+    this.npcStates.set(copy.npcId, copy);
+    this.syncNPC(copy);
+  }
+
+  getNPC(npcId: string): NPCState | null {
+    const state = this.npcStates.get(npcId);
+    return state ? structuredClone(state) : null;
+  }
+
+  recordMemory(npcId: string, memory: Omit<NPCMemory, "memoryId"> & { memoryId?: string }): void {
+    const npc = this.npcStates.get(npcId);
+    if (!npc) return;
+    const entry: NPCMemory = { ...memory, memoryId: memory.memoryId ?? `${npcId}-${Date.now()}-${npc.memories.length}` };
+    npc.memories.push(entry);
+    if (npc.memories.length > 120) {
+      npc.memories.sort((a, b) => (b.importance * b.confidence) - (a.importance * a.confidence));
+      npc.memories.length = 120;
+    }
+    this.syncNPC(npc);
+    this.bus.emit(Events.NPC_MEMORY_ADDED, { npcId, memory: structuredClone(entry) });
+  }
+
+  changeRelationship(npcId: string, targetId: string, delta: Partial<Relationship["dimensions"]>): void {
+    const npc = this.npcStates.get(npcId);
+    if (!npc) return;
+    const relation = npc.relationships[targetId] ?? {
+      targetId,
+      dimensions: { trust: 0, fear: 0, respect: 0, anger: 0, loyalty: 0, affection: 0, suspicion: 0 },
+      historySummary: "Relationship is developing.",
+      lastSignificantEvent: null,
+      relationshipType: "neutral"
+    };
+    for (const [key, value] of Object.entries(delta)) {
+      if (typeof value !== "number") continue;
+      const field = key as keyof Relationship["dimensions"];
+      const current = relation.dimensions[field];
+      const next = current + value;
+      relation.dimensions[field] = ["trust", "respect", "loyalty", "affection"].includes(key)
+        ? Math.max(-1, Math.min(1, next))
+        : Math.max(0, Math.min(1, next));
+    }
+    relation.historySummary = this.summarizeRelationship(relation);
+    npc.relationships[targetId] = relation;
+    this.syncNPC(npc);
+    this.bus.emit(Events.RELATIONSHIP_CHANGED, { npcId, targetId, relationship: structuredClone(relation) });
+  }
+
+  tick(seconds: number): void {
+    for (const npc of this.npcStates.values()) {
+      npc.lastUpdated += seconds;
+      for (const memory of npc.memories) {
+        if (memory.decay.type === "none") continue;
+        memory.confidence = Math.max(memory.decay.minConfidence, memory.confidence - memory.decay.rate * (seconds / 3600));
+      }
+    }
+    this.store.update((game) => {
+      for (const [id, state] of this.npcStates) game.npcs[id] = structuredClone(state);
+    });
+  }
+
+  private onPlayerAction(event: { type: string; actors: string[]; location: string; payload?: Record<string, unknown> }): void {
+    for (const npc of this.npcStates.values()) {
+      if (npc.routine.locationId !== event.location) continue;
+      this.recordMemory(npc.npcId, {
+        timestamp: this.store.getState().gameTime,
+        eventType: event.type,
+        subject: "player",
+        description: typeof event.payload?.description === "string" ? event.payload.description : event.type,
+        emotionalImpact: { emotion: "curiosity", intensity: 0.15 },
+        confidence: 0.65,
+        source: "direct_observation",
+        importance: 0.35,
+        relevanceTags: ["player", "observation"],
+        decay: { type: "exponential", rate: 0.04, minConfidence: 0.15 },
+        linkedMemories: []
+      });
+    }
+  }
+
+  private applyDialogueEffect(npcId: string, effect: GameEffect): void {
+    if (effect.type === "change_relationship") {
+      const targetId = String(effect.payload.targetId ?? "player");
+      const delta = effect.payload.delta;
+      if (delta && typeof delta === "object") this.changeRelationship(npcId, targetId, delta as Partial<Relationship["dimensions"]>);
+    }
+    if (effect.type === "add_memory") {
+      const payload = effect.payload;
+      this.recordMemory(npcId, {
+        timestamp: this.store.getState().gameTime,
+        eventType: String(payload.eventType ?? "DIALOGUE"),
+        subject: String(payload.subject ?? "player"),
+        description: String(payload.description ?? "Important conversation event"),
+        emotionalImpact: { emotion: String(payload.emotion ?? "neutral"), intensity: Number(payload.intensity ?? 0.2) },
+        confidence: Number(payload.confidence ?? 0.9),
+        source: "conversation",
+        importance: Number(payload.importance ?? 0.5),
+        relevanceTags: Array.isArray(payload.relevanceTags) ? payload.relevanceTags.map(String) : ["dialogue"],
+        decay: { type: "exponential", rate: 0.03, minConfidence: 0.2 },
+        linkedMemories: []
+      });
+    }
+  }
+
+  private summarizeRelationship(relation: Relationship): string {
+    const d = relation.dimensions;
+    if (d.suspicion > 0.7) return "Highly suspicious.";
+    if (d.trust > 0.65 && d.affection > 0.4) return "Strong trust and affection.";
+    if (d.fear > 0.7) return "Feels unsafe around this person.";
+    if (d.respect > 0.6) return "Strong respect.";
+    if (d.anger > 0.65) return "Significant anger.";
+    return "Mixed or developing relationship.";
+  }
+
+  private syncNPC(npc: NPCState): void {
+    this.store.update((game) => { game.npcs[npc.npcId] = structuredClone(npc); });
+  }
+}
+
+================================================================================
+FILE: src/npc/NPCState.ts
+================================================================================
+/**
+ * BLACK MILE - NPC State Interface
+ * Implements the design in docs/NPC_DESIGN.md
+ * Phase 1 Lock — do not simplify multi-dimensional relationships or memory model
+ */
+
+export interface NPCState {
+  npcId: string;
+  name: string;
+  archetype: string;
+
+  personality: {
+    openness: number;
+    conscientiousness: number;
+    extraversion: number;
+    agreeableness: number;
+    neuroticism: number;
+    traits: string[];
+  };
+
+  currentMood: {
+    primary: string;
+    intensity: number;
+    decayRate: number;
+  };
+
+  goals: NPCGoal[];
+  fears: string[];
+  secrets: NPCSecret[];
+
+  memories: NPCMemory[];
+  relationships: Record<string, Relationship>;
+
+  routine: {
+    currentActivity: string;
+    locationId: string;
+    schedule: Record<string, string>;
+  };
+
+  trustThreshold: number;
+  suspicionThreshold: number;
+  intelligenceLevel: number;
+
+  lastUpdated: number;
+}
+
+export interface NPCGoal {
+  goalId: string;
+  description: string;
+  priority: number;
+  deadline: number | null;
+  status: 'active' | 'suspended' | 'completed' | 'failed';
+}
+
+export interface NPCSecret {
+  secretId: string;
+  content: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  knownBy: string[];
+}
+
+export interface NPCMemory {
+  memoryId: string;
+  timestamp: number;
+  eventType: string;
+  subject: string;
+  description: string;
+  emotionalImpact: {
+    emotion: string;
+    intensity: number;
+  };
+  confidence: number;
+  source: string;
+  importance: number;
+  relevanceTags: string[];
+  decay: {
+    type: 'none' | 'linear' | 'exponential';
+    rate: number;
+    minConfidence: number;
+  };
+  linkedMemories: string[];
+}
+
+export interface Relationship {
+  targetId: string;
+  dimensions: {
+    trust: number;
+    fear: number;
+    respect: number;
+    anger: number;
+    loyalty: number;
+    affection: number;
+    suspicion: number;
+  };
+  historySummary: string;
+  lastSignificantEvent: string | null;
+  relationshipType: string;
+}
+
+================================================================================
+FILE: src/ui/GameUI.ts
+================================================================================
+import type { DialoguePresenter } from "../dialogue/DialogueSystem";
+import { Events, type EventBus } from "../core/EventBus";
+import type { GameStore } from "../state/GameStore";
+
+export class GameUI implements DialoguePresenter {
+  private readonly root: HTMLElement;
+  private readonly prompt: HTMLDivElement;
+  private readonly mission: HTMLDivElement;
+  private readonly dialogue: HTMLDivElement;
+  private readonly dialogueName: HTMLDivElement;
+  private readonly dialogueText: HTMLDivElement;
+  private readonly choices: HTMLDivElement;
+  private readonly status: HTMLDivElement;
+  private readonly saveButton: HTMLButtonElement;
+  private readonly loadButton: HTMLButtonElement;
+
+  constructor(
+    host: HTMLElement,
+    private readonly store: GameStore,
+    private readonly bus: EventBus,
+    onSave: () => Promise<void>,
+    onLoad: () => Promise<void>
+  ) {
+    this.root = host;
+    this.root.innerHTML = `
+      <div class="hud">
+        <div class="brand">BLACK MILE</div>
+        <div class="sub">VEYRA // NIGHT 01</div>
+        <div id="mission" class="mission"></div>
+        <div id="status" class="status">WASD MOVE · SHIFT RUN · CLICK LOOK · E TALK</div>
+        <div id="prompt" class="prompt"></div>
+        <div id="dialogue" class="dialogue hidden">
+          <div id="dialogue-name" class="dialogue-name"></div>
+          <div id="dialogue-text" class="dialogue-text"></div>
+          <div id="choices" class="choices"></div>
+        </div>
+        <div class="save-row">
+          <button id="save">SAVE</button>
+          <button id="load">LOAD</button>
+        </div>
+      </div>
+    `;
+    this.prompt = this.root.querySelector("#prompt") as HTMLDivElement;
+    this.mission = this.root.querySelector("#mission") as HTMLDivElement;
+    this.dialogue = this.root.querySelector("#dialogue") as HTMLDivElement;
+    this.dialogueName = this.root.querySelector("#dialogue-name") as HTMLDivElement;
+    this.dialogueText = this.root.querySelector("#dialogue-text") as HTMLDivElement;
+    this.choices = this.root.querySelector("#choices") as HTMLDivElement;
+    this.status = this.root.querySelector("#status") as HTMLDivElement;
+    this.saveButton = this.root.querySelector("#save") as HTMLButtonElement;
+    this.loadButton = this.root.querySelector("#load") as HTMLButtonElement;
+
+    this.saveButton.addEventListener("click", () => void onSave());
+    this.loadButton.addEventListener("click", () => void onLoad());
+
+    this.bus.on<{ id: string; label: string } | null>(Events.INTERACTION_AVAILABLE, (item) => {
+      this.prompt.textContent = item ? `[E] ${item.label}` : "";
+    });
+
+    this.bus.on<{ missionId: string }>(Events.MISSION_COMPLETED, ({ missionId }) => {
+      this.status.textContent = `MISSION COMPLETE // ${missionId.toUpperCase()}`;
+      window.setTimeout(() => this.refreshMission(), 2200);
+    });
+
+    this.bus.on<boolean>(Events.INPUT_POINTERLOCK, (locked) => {
+      if (!this.dialogue.classList.contains("hidden")) return;
+      this.status.textContent = locked
+        ? "WASD MOVE · SHIFT RUN · E TALK · ESC RELEASE"
+        : "WASD MOVE · SHIFT RUN · CLICK LOOK · E TALK";
+    });
+
+    this.refreshMission();
+  }
+
+  show(title: string, text: string, choices: { id: string; text: string }[]): void {
+    this.dialogueName.textContent = title.replace(/-/g, " ").toUpperCase();
+    this.dialogueText.textContent = text;
+    this.choices.replaceChildren();
+
+    for (const choice of choices) {
+      const button = document.createElement("button");
+      button.textContent = choice.text;
+      button.dataset.choiceId = choice.id;
+      this.choices.appendChild(button);
+    }
+
+    this.dialogue.classList.remove("hidden");
+    this.prompt.textContent = "";
+  }
+
+  hide(): void {
+    this.dialogue.classList.add("hidden");
+    this.choices.replaceChildren();
+    this.refreshMission();
+  }
+
+  bindDialogueChoice(handler: (choiceId: string) => void): void {
+    this.choices.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) return;
+      const id = target.dataset.choiceId;
+      if (id) handler(id);
+    });
+  }
+
+  refresh(): void {
+    this.refreshMission();
+  }
+
+  private refreshMission(): void {
+    const state = this.store.getState();
+    const active = state.missions.active[0];
+    if (!active) {
+      this.mission.textContent = "NO ACTIVE MISSION";
+      return;
+    }
+    const progress = state.missions.objectiveProgress[active] ?? {};
+    const done = Object.values(progress).filter(Boolean).length;
+    const total = Object.keys(progress).length;
+    this.mission.textContent = `MISSION // ${active.toUpperCase()}  [${done}/${total}]`;
+  }
+}
+
+================================================================================
+FILE: src/main.ts
+================================================================================
+import "../styles/main.css";
+import * as THREE from "three";
+import { EventBus, Events } from "./core/EventBus";
+import { Input } from "./core/Input";
+import { GameLoop } from "./core/GameLoop";
+import { createRenderer } from "./render/Renderer";
+import { createWorld } from "./world/World";
+import { CameraRig } from "./camera/CameraRig";
+import { PlayerController } from "./player/PlayerController";
+import { InteractionSystem } from "./interaction/InteractionSystem";
+import { DialogueSystem } from "./dialogue/DialogueSystem";
+import { NPCSystem } from "./npc/NPCSystem";
+import { MissionSystem } from "./missions/MissionSystem";
+import { BrowserSaveSystem } from "./save/SaveSystem";
+import { AnimationController } from "./animation/AnimationController";
+import { GameStore } from "./state/GameStore";
+import { createInitialGameState } from "./state/GameState";
+import type { NPCState } from "./npc/NPCState";
+import type { DialogueDefinition } from "./dialogue/DialogueState";
+import type { MissionDefinition } from "./missions/MissionSchema";
+import juneNPC from "../data/npcs/june.json";
+import juneDialogue from "../data/dialogue/june-intro.json";
+import oldKeysMission from "../data/missions/02-old-keys.json";
+import { GameUI } from "./ui/GameUI";
+
+const app = document.querySelector<HTMLElement>("#app");
+if (!app) throw new Error("Application root was not found.");
+
+const bus = new EventBus();
+const store = new GameStore(createInitialGameState(), bus);
+const saves = new BrowserSaveSystem();
+const renderer = createRenderer(app);
+const input = new Input(bus);
+input.attach(renderer.renderer.domElement);
+
+const world = createWorld(renderer.scene);
+const cameraRig = new CameraRig(renderer.camera, bus);
+const player = new PlayerController(bus, input.isDown.bind(input), cameraRig.getYaw.bind(cameraRig));
+player.object.position.copy(world.spawn);
+world.root.add(player.object);
+
+const npcSystem = new NPCSystem(store, bus);
+npcSystem.addNPC(juneNPC as NPCState);
+
+const juneMesh = new THREE.Group();
+juneMesh.name = "june";
+const juneBody = new THREE.Mesh(
+  new THREE.BoxGeometry(0.48, 1.1, 0.34),
+  new THREE.MeshLambertMaterial({ color: 0x694b3d })
+);
+juneBody.position.y = 0.95;
+const juneHead = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2, 14, 12),
+  new THREE.MeshLambertMaterial({ color: 0x997c66 })
+);
+juneHead.position.y = 1.75;
+juneBody.castShadow = true;
+juneHead.castShadow = true;
+juneMesh.add(juneBody, juneHead);
+juneMesh.position.set(2.4, 0, -43);
+world.root.add(juneMesh);
+const juneAnimation = new AnimationController(juneMesh);
+
+const missionSystem = new MissionSystem(store, bus);
+missionSystem.register(oldKeysMission as MissionDefinition);
+missionSystem.start("old-keys");
+
+const ui = new GameUI(
+  app,
+  store,
+  bus,
+  async () => {
+    await saves.save("autosave", store.getState());
+    bus.emit(Events.SAVE_REQUESTED, { slot: "autosave" });
+  },
+  async () => {
+    try {
+      const loaded = await saves.load("autosave");
+      store.replace(loaded);
+      bus.emit(Events.LOAD_COMPLETED, { slot: "autosave" });
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+);
+
+const dialogue = new DialogueSystem(store, bus, ui);
+ui.bindDialogueChoice((choiceId) => dialogue.choose(choiceId));
+
+const interaction = new InteractionSystem(renderer.camera, player.object, bus);
+interaction.register({
+  id: "june",
+  label: "TALK TO JUNE",
+  position: juneMesh.position,
+  activate: () => {
+    if (!dialogue.isActive()) dialogue.start(juneDialogue as DialogueDefinition);
+  }
+});
+
+const loop = new GameLoop();
+let timeAccumulator = 0;
+loop.add({
+  update: (dt: number) => {
+    if (!dialogue.isActive()) {
+      player.update(dt);
+      cameraRig.update(dt, player.object.position);
+      interaction.update();
+    }
+    juneAnimation.update(dt);
+    timeAccumulator += dt;
+    if (timeAccumulator >= 0.25) {
+      const slice = timeAccumulator;
+      timeAccumulator = 0;
+      store.update((state) => {
+        state.gameTime += slice;
+        state.player.locationId = "black-mile";
+      });
+      bus.emit(Events.GAME_TIME_TICK, slice);
+      npcSystem.tick(slice);
+    }
+  }
+});
+
+bus.on(Events.MISSION_COMPLETED, () => {
+  ui.refresh();
+});
+
+bus.on(Events.INTERACTION_AVAILABLE, (item) => {
+  juneAnimation.setIntent(item && typeof item === "object" && "id" in item && item.id === "june" ? "nervous" : "idle");
+});
+
+cameraRig.update(0, player.object.position);
+loop.start(() => renderer.renderer.render(renderer.scene, renderer.camera));
+
+================================================================================
+FILE: styles/main.css
+================================================================================
+:root{--bg:#050805;--panel:#081108;--line:#1c5526;--green:#39ff14;--text:#eaffea;--muted:#8bb58d;--gold:#d7c98b}
+*{box-sizing:border-box}
+html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+#game-canvas{display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;z-index:10;pointer-events:none}
+.brand{position:absolute;top:18px;left:22px;font-size:18px;font-weight:900;letter-spacing:.28em;color:var(--green);text-shadow:0 0 16px #39ff1436}
+.sub{position:absolute;top:44px;left:22px;color:var(--muted);font-size:9px;letter-spacing:.16em}
+.mission{position:absolute;top:18px;right:22px;color:var(--text);font-size:10px;letter-spacing:.14em}
+.status{position:absolute;bottom:20px;left:22px;color:var(--muted);font-size:10px;letter-spacing:.08em}
+.prompt{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);padding:9px 13px;border:1px solid var(--green);background:#050a05dd;color:var(--green);font-weight:800;letter-spacing:.12em;min-width:190px;text-align:center}
+.dialogue{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);width:min(760px,90vw);background:#040804f2;border:1px solid var(--line);box-shadow:0 0 40px #0008;padding:20px;pointer-events:auto}
+.hidden{display:none}
+.dialogue-name{color:var(--green);font-size:11px;letter-spacing:.18em;font-weight:800}
+.dialogue-text{margin-top:10px;font:600 18px/1.5 Georgia,serif;color:var(--text)}
+.choices{margin-top:18px;display:grid;gap:8px}
+.choices button,.save-row button{border:1px solid var(--line);background:#081008;color:var(--text);padding:10px 12px;text-align:left;font:600 12px ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
+.choices button:hover,.save-row button:hover{border-color:var(--green);color:var(--green)}
+.save-row{position:absolute;top:74px;right:22px;display:flex;gap:6px;pointer-events:auto}
+.save-row button{padding:6px 9px;font-size:9px;letter-spacing:.1em}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;background:radial-gradient(circle at 50% 45%,transparent 40%,#0008 100%)}
+@media(max-width:700px){.dialogue{bottom:16px;padding:16px}.dialogue-text{font-size:16px}.mission{top:72px;left:22px;right:auto}.save-row{top:88px;right:22px}.status{font-size:9px}}
+
+================================================================================
+FILE: tests/NPCSystem.test.ts
+================================================================================
+import { describe, expect, it } from "vitest";
+import { EventBus } from "../src/core/EventBus";
+import { createInitialGameState } from "../src/state/GameState";
+import { GameStore } from "../src/state/GameStore";
+import { NPCSystem } from "../src/npc/NPCSystem";
+
+describe("NPCSystem", () => {
+  it("records memory and clamps relationships", () => {
+    const bus = new EventBus();
+    const store = new GameStore(createInitialGameState(), bus);
+    const npcs = new NPCSystem(store, bus);
+
+    npcs.addNPC({
+      npcId: "test",
+      name: "Test",
+      archetype: "civilian",
+      personality: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, traits: [] },
+      currentMood: { primary: "calm", intensity: 0.2, decayRate: 0.1 },
+      goals: [],
+      fears: [],
+      secrets: [],
+      memories: [],
+      relationships: {},
+      routine: { currentActivity: "idle", locationId: "black-mile", schedule: {} },
+      trustThreshold: 0.5,
+      suspicionThreshold: 0.5,
+      intelligenceLevel: 0.5,
+      lastUpdated: 0
+    });
+
+    npcs.changeRelationship("test", "player", { trust: 2, suspicion: -2 });
+    npcs.recordMemory("test", {
+      timestamp: 1,
+      eventType: "PLAYER_HELPED",
+      subject: "player",
+      description: "Player helped.",
+      emotionalImpact: { emotion: "gratitude", intensity: 0.7 },
+      confidence: 1,
+      source: "direct_observation",
+      importance: 0.8,
+      relevanceTags: ["player"],
+      decay: { type: "none", rate: 0, minConfidence: 1 },
+      linkedMemories: []
+    });
+
+    const npc = store.getState().npcs.test;
+    expect(npc.relationships.player.dimensions.trust).toBe(1);
+    expect(npc.relationships.player.dimensions.suspicion).toBe(0);
+    expect(npc.memories).toHaveLength(1);
+  });
+});
+
+================================================================================
+END OF BUNDLE
+================================================================================
+
+BATCH 1 INSTRUCTION TO GLM:
+- Do not write code until you have read this entire bundle.
+- This bundle is the current repository source of truth for the listed files.
+- Do not recreate EventBus or GameState.
+- Do not change docs/CONTRACTS.md or persistent GameState version without explicit approval.
+- Implement non-persistence Batch 1 work first.
+- For persistent dialogue history, provide a Contract Change Proposal if required rather than silently changing the contract.
