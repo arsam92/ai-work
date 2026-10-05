@@ -1,9 +1,5 @@
-/**
- * BLACK MILE - Serializable Game State Contract
- * Phase 1 Lock
- */
-
-import type { NPCState } from '../npc/NPCState';
+import type { NPCState } from "../npc/NPCState";
+import type { MissionRuntimeState } from "../missions/MissionSchema";
 
 export interface GameState {
   version: number;
@@ -17,7 +13,7 @@ export interface GameState {
 }
 
 export interface PlayerState {
-  id: 'player';
+  id: "player";
   locationId: string;
   knownFacts: string[];
   inventory: string[];
@@ -48,11 +44,46 @@ export interface Rumor {
   knownBy: string[];
 }
 
-export interface MissionRuntimeState {
-  active: string[];
-  completed: string[];
-  failed: string[];
-  objectiveProgress: Record<string, Record<string, boolean>>;
-}
-
 export const CURRENT_GAME_STATE_VERSION = 1;
+
+export function createInitialGameState(): GameState {
+  return {
+    version: CURRENT_GAME_STATE_VERSION,
+    gameTime: 20 * 60,
+    player: {
+      id: "player",
+      locationId: "black-mile",
+      knownFacts: [],
+      inventory: [],
+      reputation: {}
+    },
+    npcs: {},
+    missions: {
+      active: [],
+      completed: [],
+      failed: [],
+      objectiveProgress: {}
+    },
+    world: {
+      locations: {
+        "black-mile": {
+          id: "black-mile",
+          name: "Black Mile",
+          tags: ["industrial", "night", "starting-area"]
+        },
+        garage: {
+          id: "garage",
+          name: "June's Garage",
+          tags: ["safehouse", "mechanic"]
+        }
+      },
+      activeEvents: []
+    },
+    rumors: {
+      activeRumors: []
+    },
+    flags: {
+      story_intro_started: true
+    }
+  };
+}
