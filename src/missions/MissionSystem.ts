@@ -1,7 +1,7 @@
 import type { EventBus } from "../core/EventBus";
 import { Events } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
-import type { MissionDefinition } from "./MissionSchema";
+import type { MissionDefinition, MissionEffect } from "./MissionSchema";
 
 export class MissionSystem {
   private readonly definitions = new Map<string, MissionDefinition>();
@@ -46,6 +46,10 @@ export class MissionSystem {
     this.tryComplete(missionId);
   }
 
+  isCompleted(missionId: string): boolean {
+    return this.store.getState().missions.completed.includes(missionId);
+  }
+
   getDefinition(missionId: string): MissionDefinition | null {
     const definition = this.definitions.get(missionId);
     return definition ? structuredClone(definition) : null;
@@ -55,9 +59,7 @@ export class MissionSystem {
     for (const definition of this.definitions.values()) {
       if (!this.store.getState().missions.active.includes(definition.missionId)) continue;
       for (const objective of definition.objectives) {
-        if (objective.type === "talk_to" && objective.target === npcId) {
-          this.completeObjective(definition.missionId, objective.objectiveId);
-        }
+        if (objective.type === "talk_to" && objective.target === npcId) this.completeObjective(definition.missionId, objective.objectiveId);
       }
     }
   }
@@ -65,7 +67,8 @@ export class MissionSystem {
   private tryComplete(missionId: string): void {
     const definition = this.definitions.get(missionId);
     if (!definition) return;
-    const progress = this.store.getState().missions.objectiveProgress[missionId];
+    const state = this.store.getState();
+    const progress = state.missions.objectiveProgress[missionId];
     if (!progress) return;
     const complete = definition.objectives.filter((o) => !o.optional).every((o) => progress[o.objectiveId] === true);
     if (!complete) return;
@@ -73,7 +76,15 @@ export class MissionSystem {
     this.store.update((game) => {
       game.missions.active = game.missions.active.filter((id) => id !== missionId);
       if (!game.missions.completed.includes(missionId)) game.missions.completed.push(missionId);
+      for (const effect of definition.onComplete) this.applyStateEffect(game, effect);
     });
     this.bus.emit(Events.MISSION_COMPLETED, { missionId });
+  }
+
+  private applyStateEffect(state: ReturnType<GameStore["getState"]>, effect: MissionEffect): void {
+    if (effect.type === "set_flag") {
+      const key = String(effect.payload.key ?? "");
+      if (key) state.flags[key] = effect.payload.value as boolean | number | string;
+    }
   }
 }
