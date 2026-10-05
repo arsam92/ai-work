@@ -1,7 +1,5 @@
 import type { DialoguePresenter } from "../dialogue/DialogueSystem";
-import { Events } from "../core/EventBus";
-import type { EventBus } from "../core/EventBus";
-import { Events } from "../core/EventBus";
+import { Events, type EventBus } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
 
 export class GameUI implements DialoguePresenter {
