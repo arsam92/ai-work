@@ -8,7 +8,7 @@ import { createWorld } from "./world/World";
 import { CameraRig } from "./camera/CameraRig";
 import { PlayerController } from "./player/PlayerController";
 import { InteractionSystem } from "./interaction/InteractionSystem";
-import { DialogueSystem } from "./dialogue/DialogueSystem";
+import { DialogueSystem, flagEntryResolver } from "./dialogue/DialogueSystem";
 import { NPCSystem } from "./npc/NPCSystem";
 import { MissionSystem } from "./missions/MissionSystem";
 import { BrowserSaveSystem } from "./save/SaveSystem";
@@ -70,8 +70,12 @@ const ui = new GameUI(
   store,
   bus,
   async () => {
-    await saves.save("autosave", store.getState());
-    bus.emit(Events.SAVE_REQUESTED, { slot: "autosave" });
+    try {
+      await saves.save("autosave", store.getState());
+      bus.emit(Events.SAVE_REQUESTED, { slot: "autosave" });
+    } catch (error) {
+      console.warn("Save failed:", error);
+    }
   },
   async () => {
     try {
@@ -79,14 +83,15 @@ const ui = new GameUI(
       store.replace(loaded);
       bus.emit(Events.LOAD_COMPLETED, { slot: "autosave" });
     } catch (error) {
-      console.warn(error);
+      console.warn("Load failed:", error);
     }
   }
 );
 
-const dialogue = new DialogueSystem(store, bus, ui, npcSystem);
+const dialogue = new DialogueSystem(store, bus, ui, npcSystem, flagEntryResolver);
 ui.bindDialogueChoice((choiceId) => dialogue.choose(choiceId));
 ui.bindDialogueCancel(() => dialogue.end());
+ui.bindDialogueIntent((intent) => juneAnimation.setIntent(intent || "idle"));
 
 const interaction = new InteractionSystem(renderer.camera, player.object, bus);
 interaction.register({
@@ -100,6 +105,7 @@ interaction.register({
 
 const loop = new GameLoop();
 let timeAccumulator = 0;
+
 loop.add({
   update: (dt: number) => {
     if (!dialogue.isActive()) {
@@ -107,8 +113,10 @@ loop.add({
       cameraRig.update(dt, player.object.position);
       interaction.update();
     }
+
     juneAnimation.update(dt);
     timeAccumulator += dt;
+
     if (timeAccumulator >= 0.25) {
       const slice = timeAccumulator;
       timeAccumulator = 0;
@@ -122,12 +130,12 @@ loop.add({
   }
 });
 
-bus.on(Events.MISSION_COMPLETED, () => {
-  ui.refresh();
-});
+bus.on(Events.MISSION_COMPLETED, () => ui.refresh());
 
 bus.on(Events.INTERACTION_AVAILABLE, (item) => {
-  juneAnimation.setIntent(item && typeof item === "object" && "id" in item && item.id === "june" ? "nervous" : "idle");
+  juneAnimation.setIntent(
+    item && typeof item === "object" && "id" in item && item.id === "june" ? "nervous" : "idle"
+  );
 });
 
 cameraRig.update(0, player.object.position);
