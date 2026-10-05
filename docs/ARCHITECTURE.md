@@ -120,11 +120,27 @@ Alternatives considered (Babylon.js, PlayCanvas) are also valid but Three.js has
 
 ## 8. Current implementation status
 
-- Full game loop
-- Actual Three.js scene setup beyond scaffolding
-- Concrete NPC AI implementation (only the contract)
-- Mission content files
-- Dialogue content files
-- Animation clips
+### Implemented
+- Vite + TypeScript project boot
+- Three.js renderer and simple Veyra scene
+- third-person player movement and camera
+- interaction range and input
+- dialogue runtime and UI
+- one NPC runtime with memory and multi-dimensional relationships
+- first data-driven mission: OLD KEYS
+- browser save/load contract implementation
+- procedural animation hook
+- EventBus and GameStore implementation
+- unit tests for EventBus, GameState, GameStore and MissionSystem
+- GitHub Actions CI for typecheck, tests and production build
 
-Phase 1 core and the first playable vertical slice now exist. Full NPC autonomy, large-world simulation, complete mission content, advanced animation, and full QA remain future phases.
+### Not yet complete
+- autonomous NPC schedules and full goal planner
+- robust knowledge graph and rumor propagation
+- full city simulation and interiors
+- complete campaign and side missions
+- advanced character animation and facial/body performance
+- combat, vehicles and police systems
+- browser end-to-end regression suite
+
+The repository is intentionally being built as a story-first vertical slice before expanding the world.
