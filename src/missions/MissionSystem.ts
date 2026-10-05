@@ -23,6 +23,13 @@ export class MissionSystem {
     const state = this.store.getState();
     if (state.missions.active.includes(missionId) || state.missions.completed.includes(missionId)) return false;
     if (definition.prerequisites.missionsCompleted?.some((id) => !state.missions.completed.includes(id))) return false;
+    if (definition.prerequisites.flags?.some((flag) => !state.flags[flag])) return false;
+    if (definition.prerequisites.minRelationship?.some((requirement) => {
+      const relation = state.npcs[requirement.npcId]?.relationships.player;
+      if (!relation) return true;
+      const value = relation.dimensions[requirement.dimension as keyof typeof relation.dimensions];
+      return typeof value !== "number" || value < requirement.value;
+    })) return false;
 
     this.store.update((game) => {
       game.missions.active.push(missionId);
