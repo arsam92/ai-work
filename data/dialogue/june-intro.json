@@ -1,0 +1,64 @@
+{
+  "dialogueId": "june-intro",
+  "npcId": "june",
+  "startNodeId": "start",
+  "nodes": {
+    "start": {
+      "id": "start",
+      "speakerId": "june",
+      "text": "Elias? ...I knew the city would drag you back eventually.",
+      "tone": "guarded",
+      "animationIntent": "nervous",
+      "choices": [
+        { "id": "calm", "text": "I need to talk. Something happened to Jonah.", "nextNodeId": "jonah", "effects": [] },
+        { "id": "pressure", "text": "Someone searched your garage. What are you hiding?", "nextNodeId": "pressure", "effects": [] }
+      ]
+    },
+    "jonah": {
+      "id": "jonah",
+      "speakerId": "june",
+      "text": "Jonah came here two nights ago. He asked about an old set of keys. Then somebody came looking for the same thing.",
+      "tone": "concerned",
+      "animationIntent": "nervous",
+      "choices": [
+        { "id": "ask-keys", "text": "What keys?", "nextNodeId": "keys", "effects": [] },
+        { "id": "promise", "text": "I'll keep you out of this. Tell me what you know.", "nextNodeId": "keys", "effects": [
+          { "type": "set_flag", "payload": { "key": "june_promise_made", "value": true } }
+        ] }
+      ]
+    },
+    "pressure": {
+      "id": "pressure",
+      "speakerId": "june",
+      "text": "You disappear for years, come back angry, and start asking questions like you still own this place? No. Slow down.",
+      "tone": "angry",
+      "animationIntent": "step_back",
+      "choices": [
+        { "id": "apologize", "text": "You're right. I should have asked first.", "nextNodeId": "jonah", "effects": [] },
+        { "id": "leave", "text": "Fine. I'll find the answers somewhere else.", "nextNodeId": null, "effects": [] }
+      ]
+    },
+    "keys": {
+      "id": "keys",
+      "speakerId": "june",
+      "text": "Old ignition keys. They belonged to a delivery van tied to Black Mile. Jonah said one of them opens a storage cage.",
+      "tone": "quiet",
+      "animationIntent": "avoid_eye_contact",
+      "choices": [
+        { "id": "where", "text": "Where is the cage?", "nextNodeId": "end", "effects": [
+          { "type": "set_flag", "payload": { "key": "june_old_keys_lead", "value": true } }
+        ] }
+      ]
+    },
+    "end": {
+      "id": "end",
+      "speakerId": "june",
+      "text": "Behind the railway yard. And Elias... don't make me regret helping you again.",
+      "tone": "worried",
+      "animationIntent": "avoid_eye_contact",
+      "choices": [
+        { "id": "goodbye", "text": "I won't.", "nextNodeId": null, "effects": [] }
+      ]
+    }
+  }
+}
