@@ -1,7 +1,8 @@
 import type { EventBus } from "../core/EventBus";
 import { Events } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
-import type { MissionDefinition, MissionEffect } from "./MissionSchema";
+import type { MissionDefinition } from "./MissionSchema";
+import type { GameEffect } from "../core/Effects";
 
 export class MissionSystem {
   private readonly definitions = new Map<string, MissionDefinition>();
@@ -88,7 +89,7 @@ export class MissionSystem {
     this.bus.emit(Events.MISSION_COMPLETED, { missionId });
   }
 
-  private applyStateEffect(state: ReturnType<GameStore["getState"]>, effect: MissionEffect): void {
+  private applyStateEffect(state: ReturnType<GameStore["getState"]>, effect: GameEffect): void {
     if (effect.type === "set_flag") {
       const key = String(effect.payload.key ?? "");
       if (key) state.flags[key] = effect.payload.value as boolean | number | string;
