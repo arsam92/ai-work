@@ -21,6 +21,8 @@ export function createRenderer(container: HTMLElement): RendererHandle {
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.setSize(container.clientWidth, container.clientHeight);
+  // Shadows are intentionally disabled until the production lighting pipeline is ready.
+  renderer.shadowMap.enabled = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
 
