@@ -867,7 +867,7 @@ export class Input {
       forward: ["KeyW", "ArrowUp"],
       back: ["KeyS", "ArrowDown"],
       left: ["KeyA", "ArrowLeft"],
-      right: ["ArrowRight", "ArrowRight"],
+      right: ["KeyD", "ArrowRight"],
       run: ["ShiftLeft", "ShiftRight"]
     };
     return map[action].some((key) => this.keys.has(key));
