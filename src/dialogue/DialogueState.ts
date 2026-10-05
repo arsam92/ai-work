@@ -1,17 +1,12 @@
-/**
- * BLACK MILE - Dialogue State Schema
- * Phase 1 Lock
- */
-
-import type { NPCState } from '../npc/NPCState';
-import type { MissionEffect } from '../missions/MissionSchema';
+import type { NPCState } from "../npc/NPCState";
+import type { MissionEffect } from "../missions/MissionSchema";
 
 export interface DialogueState {
   conversationId: string;
   participants: string[];
   locationId: string;
   startTime: number;
-  moodAtStart: Record<string, NPCState['currentMood']>;
+  moodAtStart: Record<string, NPCState["currentMood"]>;
   activeTopics: string[];
   promises: DialoguePromise[];
   liesDetected: number;
@@ -26,7 +21,7 @@ export interface DialoguePromise {
   promiseId: string;
   content: string;
   deadline: number | null;
-  status: 'pending' | 'fulfilled' | 'broken';
+  status: "pending" | "fulfilled" | "broken";
   madeBy: string;
   madeTo: string;
 }
@@ -37,4 +32,27 @@ export interface DialogueLine {
   tone: string;
   animationIntent?: string;
   effects?: MissionEffect[];
+}
+
+export interface DialogueChoice {
+  id: string;
+  text: string;
+  nextNodeId: string | null;
+  effects?: MissionEffect[];
+}
+
+export interface DialogueNode {
+  id: string;
+  speakerId: string;
+  text: string;
+  tone: string;
+  animationIntent?: string;
+  choices: DialogueChoice[];
+}
+
+export interface DialogueDefinition {
+  dialogueId: string;
+  npcId: string;
+  startNodeId: string;
+  nodes: Record<string, DialogueNode>;
 }
