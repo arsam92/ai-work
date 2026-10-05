@@ -16,7 +16,6 @@ export function createWorld(scene: THREE.Scene): WorldObjects {
 
   const street = new THREE.DirectionalLight(0xa9c2ff, 1.15);
   street.position.set(20, 28, -8);
-  street.castShadow = true;
   street.shadow.mapSize.set(1024, 1024);
   street.shadow.camera.near = 1;
   street.shadow.camera.far = 90;
@@ -31,7 +30,6 @@ export function createWorld(scene: THREE.Scene): WorldObjects {
     new THREE.MeshLambertMaterial({ color: 0x111611 })
   );
   ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
   root.add(ground);
 
   const road = new THREE.Mesh(
@@ -40,7 +38,6 @@ export function createWorld(scene: THREE.Scene): WorldObjects {
   );
   road.rotation.x = -Math.PI / 2;
   road.position.y = 0.01;
-  road.receiveShadow = true;
   root.add(road);
 
   const stripeMat = new THREE.MeshBasicMaterial({ color: 0xb0a889 });
@@ -58,8 +55,6 @@ export function createWorld(scene: THREE.Scene): WorldObjects {
         new THREE.MeshLambertMaterial({ color: side > 0 ? 0x232a27 : 0x1d2420 })
       );
       building.position.set(side * 8.2, building.geometry.parameters.height / 2, i * 8);
-      building.castShadow = true;
-      building.receiveShadow = true;
       root.add(building);
     }
   }
@@ -70,7 +65,6 @@ export function createWorld(scene: THREE.Scene): WorldObjects {
     for (const side of [-1, 1]) {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 4.5, 8), lampMat);
       pole.position.set(side * 6.7, 2.25, z);
-      pole.castShadow = true;
       root.add(pole);
 
       const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), glowMat);
