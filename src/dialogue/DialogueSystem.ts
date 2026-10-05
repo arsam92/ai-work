@@ -86,7 +86,7 @@ export class DialogueSystem {
   private active: DialogueState | null = null;
   private definition: DialogueDefinition | null = null;
   private currentNodeId: string | null = null;
-  private pendingDecisionIntent: string | null = null;
+  private pendingDecisionIntent: AnimationIntent | null = null;
   private readonly sessionHistory: DialogueHistoryEntry[] = [];
   private static readonly MAX_SESSION_HISTORY = 100;
 
