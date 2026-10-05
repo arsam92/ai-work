@@ -1,0 +1,24 @@
+{
+  "missionId": "old-keys",
+  "act": 1,
+  "title": "OLD KEYS",
+  "description": "Find out what happened at June's garage and follow Jonah's lead.",
+  "prerequisites": { "flags": [] },
+  "objectives": [
+    {
+      "objectiveId": "talk-june",
+      "type": "talk_to",
+      "target": "june",
+      "description": "Talk to June at the garage.",
+      "optional": false,
+      "completed": false
+    }
+  ],
+  "onComplete": [
+    {
+      "type": "set_flag",
+      "payload": { "key": "mission_old_keys_complete", "value": true }
+    }
+  ],
+  "alternativeSolutions": ["calm conversation", "pressure then apology"]
+}
