@@ -1,5 +1,6 @@
 import { Events, type EventBus } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
+import type { AnimationIntent } from "../animation/AnimationController";
 import type { GameState } from "../state/GameState";
 import type { GameEffect } from "../core/Effects";
 import type { NPCState } from "../npc/NPCState";
@@ -7,7 +8,7 @@ import { decideSocialRequest, type SocialRequestContext, type SocialRequestDecis
 import type { DialogueChoice, DialogueDefinition, DialoguePromise, DialogueState } from "./DialogueState";
 
 export interface DialogueShowMeta {
-  animationIntent?: string;
+  animationIntent?: AnimationIntent;
 }
 
 export interface DialoguePresenter {
