@@ -6,11 +6,29 @@ type Action = "forward" | "back" | "left" | "right" | "run";
 export class Input {
   private readonly keys = new Set<string>();
   private pointerLocked = false;
+  private dialogueLocked = false;
 
-  constructor(private readonly bus: EventBus) {}
+  constructor(private readonly bus: EventBus) {
+    this.bus.on(Events.DIALOGUE_STARTED, () => {
+      this.dialogueLocked = true;
+      this.keys.clear();
+      if (typeof document !== "undefined" && document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    });
+    this.bus.on(Events.DIALOGUE_ENDED, () => {
+      this.dialogueLocked = false;
+      this.keys.clear();
+    });
+  }
 
   attach(target: HTMLElement): void {
     const down = (event: KeyboardEvent): void => {
+      if (this.dialogueLocked) {
+        this.keys.clear();
+        return;
+      }
+
       this.keys.add(event.code);
       if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","ShiftLeft","ShiftRight","KeyE"].includes(event.code)) {
         event.preventDefault();
@@ -27,6 +45,7 @@ export class Input {
     window.addEventListener("blur", () => this.keys.clear());
 
     target.addEventListener("click", () => {
+      if (this.dialogueLocked) return;
       if (document.pointerLockElement !== target) {
         void target.requestPointerLock();
       }
@@ -38,17 +57,19 @@ export class Input {
     });
 
     document.addEventListener("mousemove", (event) => {
-      if (!this.pointerLocked) return;
+      if (!this.pointerLocked || this.dialogueLocked) return;
       this.bus.emit(Events.INPUT_LOOK, { dx: event.movementX, dy: event.movementY });
     });
 
     target.addEventListener("wheel", (event) => {
+      if (this.dialogueLocked) return;
       event.preventDefault();
       this.bus.emit(Events.INPUT_WHEEL, event.deltaY);
     }, { passive: false });
   }
 
   isDown(action: Action): boolean {
+    if (this.dialogueLocked) return false;
     const map: Record<Action, string[]> = {
       forward: ["KeyW", "ArrowUp"],
       back: ["KeyS", "ArrowDown"],
