@@ -204,7 +204,7 @@ describe("DialogueSystem", () => {
     dialogue.choose("bye");
 
     const log = readDialogueLog(store.getState());
-    expect(log).toHaveLength(3);
+    expect(log).toHaveLength(4);
     expect(log[0]).toMatchObject({ convo: "test-dialogue", npc: "test", by: "test", node: "start" });
     expect(log[1]).toMatchObject({ by: "player", choice: "calm", text: "I need to talk." });
     expect(typeof store.getState().flags[DIALOGUE_LOG_FLAG_KEY]).toBe("string");
