@@ -1,7 +1,7 @@
 import type { EventBus } from "../core/EventBus";
 import { Events } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
-import type { MissionEffect } from "../missions/MissionSchema";
+import type { GameEffect } from "../core/Effects";
 import type { NPCMemory, NPCState, Relationship } from "./NPCState";
 
 export class NPCSystem {
@@ -9,7 +9,7 @@ export class NPCSystem {
 
   constructor(private readonly store: GameStore, private readonly bus: EventBus) {
     this.bus.on<{ type: string; actors: string[]; location: string; payload?: Record<string, unknown> }>(Events.PLAYER_ACTION_OBSERVED, (event) => this.onPlayerAction(event));
-    this.bus.on<{ npcId: string; effect: MissionEffect }>("dialogue.effect", ({ npcId, effect }) => this.applyDialogueEffect(npcId, effect));
+    this.bus.on<{ npcId: string; effect: GameEffect }>("dialogue.effect", ({ npcId, effect }) => this.applyDialogueEffect(npcId, effect));
   }
 
   addNPC(state: NPCState): void {
@@ -93,7 +93,7 @@ export class NPCSystem {
     }
   }
 
-  private applyDialogueEffect(npcId: string, effect: MissionEffect): void {
+  private applyDialogueEffect(npcId: string, effect: GameEffect): void {
     if (effect.type === "change_relationship") {
       const targetId = String(effect.payload.targetId ?? "player");
       const delta = effect.payload.delta;
