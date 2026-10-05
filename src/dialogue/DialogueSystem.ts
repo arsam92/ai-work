@@ -1,6 +1,6 @@
 import type { EventBus } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
-import type { MissionEffect } from "../missions/MissionSchema";
+import type { GameEffect } from "../core/Effects";
 import type { DialogueDefinition, DialogueState } from "./DialogueState";
 
 export interface DialoguePresenter {
