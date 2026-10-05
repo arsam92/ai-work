@@ -49,6 +49,7 @@ export class DialogueSystem {
     if (!choice) return;
 
     for (const effect of choice.effects ?? []) {
+      this.applyLocalEffect(effect);
       this.bus.emit("dialogue.effect", { npcId: this.definition.npcId, effect });
     }
 
@@ -68,6 +69,13 @@ export class DialogueSystem {
   }
 
   isActive(): boolean { return this.active !== null; }
+
+  private applyLocalEffect(effect: GameEffect): void {
+    if (effect.type !== "set_flag") return;
+    this.store.update((state) => {
+      state.flags[effect.payload.key] = effect.payload.value;
+    });
+  }
 
   private showCurrentNode(): void {
     if (!this.definition || !this.currentNodeId) return;
