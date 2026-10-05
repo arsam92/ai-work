@@ -1,0 +1,51 @@
+import { describe, expect, it } from "vitest";
+import { EventBus } from "../src/core/EventBus";
+import { createInitialGameState } from "../src/state/GameState";
+import { GameStore } from "../src/state/GameStore";
+import { NPCSystem } from "../src/npc/NPCSystem";
+
+describe("NPCSystem", () => {
+  it("records memory and clamps relationships", () => {
+    const bus = new EventBus();
+    const store = new GameStore(createInitialGameState(), bus);
+    const npcs = new NPCSystem(store, bus);
+
+    npcs.addNPC({
+      npcId: "test",
+      name: "Test",
+      archetype: "civilian",
+      personality: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, traits: [] },
+      currentMood: { primary: "calm", intensity: 0.2, decayRate: 0.1 },
+      goals: [],
+      fears: [],
+      secrets: [],
+      memories: [],
+      relationships: {},
+      routine: { currentActivity: "idle", locationId: "black-mile", schedule: {} },
+      trustThreshold: 0.5,
+      suspicionThreshold: 0.5,
+      intelligenceLevel: 0.5,
+      lastUpdated: 0
+    });
+
+    npcs.changeRelationship("test", "player", { trust: 2, suspicion: -2 });
+    npcs.recordMemory("test", {
+      timestamp: 1,
+      eventType: "PLAYER_HELPED",
+      subject: "player",
+      description: "Player helped.",
+      emotionalImpact: { emotion: "gratitude", intensity: 0.7 },
+      confidence: 1,
+      source: "direct_observation",
+      importance: 0.8,
+      relevanceTags: ["player"],
+      decay: { type: "none", rate: 0, minConfidence: 1 },
+      linkedMemories: []
+    });
+
+    const npc = store.getState().npcs.test;
+    expect(npc.relationships.player.dimensions.trust).toBe(1);
+    expect(npc.relationships.player.dimensions.suspicion).toBe(0);
+    expect(npc.memories).toHaveLength(1);
+  });
+});
