@@ -1,5 +1,5 @@
 import type { NPCState } from "../npc/NPCState";
-import type { MissionEffect } from "../missions/MissionSchema";
+import type { GameEffect } from "../core/Effects";
 
 export interface DialogueState {
   conversationId: string;
@@ -31,14 +31,14 @@ export interface DialogueLine {
   text: string;
   tone: string;
   animationIntent?: string;
-  effects?: MissionEffect[];
+  effects?: GameEffect[];
 }
 
 export interface DialogueChoice {
   id: string;
   text: string;
   nextNodeId: string | null;
-  effects?: MissionEffect[];
+  effects?: GameEffect[];
 }
 
 export interface DialogueNode {
