@@ -47,7 +47,7 @@ export interface DialogueNode {
   speakerId: string;
   text: string;
   tone: string;
-  animationIntent?: string;
+  animationIntent?: AnimationIntent;
   choices: DialogueChoice[];
 }
 
