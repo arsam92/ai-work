@@ -118,7 +118,7 @@ Alternatives considered (Babylon.js, PlayCanvas) are also valid but Three.js has
 - Basic TypeScript interfaces for the six critical contracts
 - Folder scaffolding
 
-## 8. What is intentionally NOT built yet
+## 8. Current implementation status
 
 - Full game loop
 - Actual Three.js scene setup beyond scaffolding
@@ -127,4 +127,4 @@ Alternatives considered (Babylon.js, PlayCanvas) are also valid but Three.js has
 - Dialogue content files
 - Animation clips
 
-These come after the architecture is locked and reviewed.
+Phase 1 core and the first playable vertical slice now exist. Full NPC autonomy, large-world simulation, complete mission content, advanced animation, and full QA remain future phases.
