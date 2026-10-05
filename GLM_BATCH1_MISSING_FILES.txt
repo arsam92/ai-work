@@ -1,0 +1,350 @@
+# BLACK MILE — GLM BATCH 1 MISSING FILES
+# Current source from main branch of arsam92/ai-work
+# Use this bundle only to resolve the four missing/truncated source files.
+# Do not modify code until the approved Batch 1 plan is being implemented.
+
+====================================================================================================
+FILE: src/npc/NPCDecisionSystem.ts
+====================================================================================================
+import type { NPCState } from "./NPCState";
+
+export type NPCAction =
+  | "idle"
+  | "work"
+  | "approach"
+  | "avoid"
+  | "leave"
+  | "call_for_help"
+  | "investigate";
+
+export type SocialRequestAction = "accept" | "decline" | "ask_why" | "counteroffer";
+
+export interface NPCDecisionContext {
+  playerVisible: boolean;
+  playerDistance: number;
+  immediateDanger: number;
+  goalPressure: number;
+}
+
+export interface NPCDecision {
+  action: NPCAction;
+  reason: string;
+  targetId: string | null;
+  confidence: number;
+  animationIntent: string;
+}
+
+export interface SocialRequestContext {
+  request: string;
+  destination: string;
+  timeCost: number;
+  privacy: number;
+  danger: number;
+  urgency: number;
+  socialPressure: number;
+}
+
+export interface SocialRequestDecision {
+  action: SocialRequestAction;
+  reason: string;
+  targetId: string;
+  confidence: number;
+  animationIntent: string;
+}
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+export function decideNPCAction(npc: NPCState, context: NPCDecisionContext): NPCDecision {
+  const relation = npc.relationships.player;
+  const trust = relation?.dimensions.trust ?? 0;
+  const fear = Math.max(context.immediateDanger, relation?.dimensions.fear ?? 0);
+  const suspicion = relation?.dimensions.suspicion ?? 0;
+
+  if (fear >= 0.85) {
+    return {
+      action: "call_for_help",
+      reason: "survival",
+      targetId: "player",
+      confidence: 0.95,
+      animationIntent: "fearful"
+    };
+  }
+
+  if (context.playerVisible && (fear >= 0.6 || suspicion >= Math.max(npc.suspicionThreshold, 0.65))) {
+    return {
+      action: context.playerDistance < 4 ? "avoid" : "leave",
+      reason: fear >= suspicion ? "fear" : "suspicion",
+      targetId: "player",
+      confidence: 0.82,
+      animationIntent: fear >= 0.6 ? "fearful" : "avoid_eye_contact"
+    };
+  }
+
+  if (context.playerVisible && trust >= npc.trustThreshold && context.playerDistance < 5) {
+    return {
+      action: "approach",
+      reason: "trusted_social_contact",
+      targetId: "player",
+      confidence: 0.78,
+      animationIntent: "idle"
+    };
+  }
+
+  if (context.goalPressure >= 0.7) {
+    return {
+      action: "investigate",
+      reason: "high_priority_goal",
+      targetId: null,
+      confidence: 0.7,
+      animationIntent: "idle"
+    };
+  }
+
+  return {
+    action: npc.routine.currentActivity ? "work" : "idle",
+    reason: "routine",
+    targetId: null,
+    confidence: 0.55,
+    animationIntent: "idle"
+  };
+}
+
+export function decideSocialRequest(
+  npc: NPCState,
+  context: SocialRequestContext
+): SocialRequestDecision {
+  const relation = npc.relationships.player;
+  const trust = clamp01(relation?.dimensions.trust ?? 0);
+  const fear = clamp01(relation?.dimensions.fear ?? 0);
+  const suspicion = clamp01(relation?.dimensions.suspicion ?? 0);
+  const affection = clamp01(relation?.dimensions.affection ?? 0);
+  const loyalty = clamp01(relation?.dimensions.loyalty ?? 0);
+
+  const activeGoalPressure = npc.goals.reduce(
+    (highest, goal) => goal.status === "active" ? Math.max(highest, clamp01(goal.priority)) : highest,
+    0
+  );
+
+  const risk = clamp01(Math.max(context.danger, fear));
+  const socialValue = clamp01(
+    trust * 0.38 +
+    affection * 0.18 +
+    loyalty * 0.16 +
+    context.urgency * 0.12 +
+    context.socialPressure * 0.16
+  );
+
+  const cost = clamp01(context.timeCost * 0.55 + context.privacy * 0.2 + risk * 0.25);
+  const confidenceBase = 0.55 + clamp01(npc.intelligenceLevel) * 0.35;
+
+  if (risk >= 0.8) {
+    return {
+      action: "decline",
+      reason: "immediate_safety_risk",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "fearful"
+    };
+  }
+
+  if (suspicion >= 0.68 && context.privacy >= 0.5) {
+    return {
+      action: "ask_why",
+      reason: "high_suspicion_private_request",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "avoid_eye_contact"
+    };
+  }
+
+  if (activeGoalPressure >= 0.8 && context.timeCost >= 0.2 && socialValue < 0.62) {
+    return {
+      action: "counteroffer",
+      reason: "protect_high_priority_goal",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "nervous"
+    };
+  }
+
+  if (socialValue >= 0.68 && cost <= 0.5 && suspicion < 0.55) {
+    return {
+      action: "accept",
+      reason: "relationship_overcomes_cost",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "idle"
+    };
+  }
+
+  if (socialValue >= 0.5 && suspicion < 0.65) {
+    return {
+      action: "ask_why",
+      reason: "needs_context_before_commitment",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "nervous"
+    };
+  }
+
+  return {
+    action: "decline",
+    reason: activeGoalPressure >= 0.65 ? "protect_current_priority" : "insufficient_trust",
+    targetId: "player",
+    confidence: confidenceBase,
+    animationIntent: "avoid_eye_contact"
+  };
+}
+
+
+====================================================================================================
+FILE: src/core/Effects.ts
+====================================================================================================
+export type GameEffect =
+  | {
+      type: "set_flag";
+      payload: { key: string; value: boolean | number | string };
+    }
+  | {
+      type: "change_relationship";
+      payload: Record<string, unknown>;
+    }
+  | {
+      type: "add_memory";
+      payload: Record<string, unknown>;
+    }
+  | {
+      type: "unlock_mission";
+      payload: Record<string, unknown>;
+    }
+  | {
+      type: "start_rumor";
+      payload: Record<string, unknown>;
+    }
+  | {
+      type: "custom";
+      payload: Record<string, unknown>;
+    };
+
+
+====================================================================================================
+FILE: data/npcs/june.json
+====================================================================================================
+{
+  "npcId": "june",
+  "name": "June Mercer",
+  "archetype": "mechanic",
+  "personality": {
+    "openness": 0.58,
+    "conscientiousness": 0.74,
+    "extraversion": 0.62,
+    "agreeableness": 0.55,
+    "neuroticism": 0.48,
+    "traits": ["practical", "loyal", "funny", "guarded"]
+  },
+  "currentMood": {
+    "primary": "anxious",
+    "intensity": 0.46,
+    "decayRate": 0.08
+  },
+  "goals": [
+    {
+      "goalId": "save-garage",
+      "description": "Keep the garage open.",
+      "priority": 0.9,
+      "deadline": null,
+      "status": "active"
+    }
+  ],
+  "fears": ["losing the garage", "being dragged back into Elias's old life"],
+  "secrets": [],
+  "memories": [],
+  "relationships": {
+    "player": {
+      "targetId": "player",
+      "dimensions": {
+        "trust": 0.35,
+        "fear": 0.1,
+        "respect": 0.25,
+        "anger": 0.05,
+        "loyalty": 0.4,
+        "affection": 0.5,
+        "suspicion": 0.3
+      },
+      "historySummary": "Old friend who has not been seen in years.",
+      "lastSignificantEvent": null,
+      "relationshipType": "friend"
+    }
+  },
+  "routine": {
+    "currentActivity": "repairing a car",
+    "locationId": "garage",
+    "schedule": {
+      "08:00": "open garage",
+      "13:00": "parts run",
+      "19:00": "close garage",
+      "20:00": "repairing a car"
+    }
+  },
+  "trustThreshold": 0.55,
+  "suspicionThreshold": 0.4,
+  "intelligenceLevel": 0.72,
+  "lastUpdated": 0
+}
+
+
+====================================================================================================
+FILE: tests/NPCSystem.test.ts
+====================================================================================================
+import { describe, expect, it } from "vitest";
+import { EventBus } from "../src/core/EventBus";
+import { createInitialGameState } from "../src/state/GameState";
+import { GameStore } from "../src/state/GameStore";
+import { NPCSystem } from "../src/npc/NPCSystem";
+
+describe("NPCSystem", () => {
+  it("records memory and clamps relationships", () => {
+    const bus = new EventBus();
+    const store = new GameStore(createInitialGameState(), bus);
+    const npcs = new NPCSystem(store, bus);
+
+    npcs.addNPC({
+      npcId: "test",
+      name: "Test",
+      archetype: "civilian",
+      personality: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, traits: [] },
+      currentMood: { primary: "calm", intensity: 0.2, decayRate: 0.1 },
+      goals: [],
+      fears: [],
+      secrets: [],
+      memories: [],
+      relationships: {},
+      routine: { currentActivity: "idle", locationId: "black-mile", schedule: {} },
+      trustThreshold: 0.5,
+      suspicionThreshold: 0.5,
+      intelligenceLevel: 0.5,
+      lastUpdated: 0
+    });
+
+    npcs.changeRelationship("test", "player", { trust: 2, suspicion: -2 });
+    npcs.recordMemory("test", {
+      timestamp: 1,
+      eventType: "PLAYER_HELPED",
+      subject: "player",
+      description: "Player helped.",
+      emotionalImpact: { emotion: "gratitude", intensity: 0.7 },
+      confidence: 1,
+      source: "direct_observation",
+      importance: 0.8,
+      relevanceTags: ["player"],
+      decay: { type: "none", rate: 0, minConfidence: 1 },
+      linkedMemories: []
+    });
+
+    const npc = store.getState().npcs.test;
+    expect(npc.relationships.player.dimensions.trust).toBe(1);
+    expect(npc.relationships.player.dimensions.suspicion).toBe(0);
+    expect(npc.memories).toHaveLength(1);
+  });
+});
+
