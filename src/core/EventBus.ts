@@ -10,10 +10,12 @@ export interface IEventBus {
 
 export const Events = {
   PLAYER_ACTION_OBSERVED: "player.action.observed",
+  PLAYER_MOVED: "player.moved",
   NPC_MEMORY_ADDED: "npc.memory.added",
   RELATIONSHIP_CHANGED: "npc.relationship.changed",
   DIALOGUE_STARTED: "dialogue.started",
   DIALOGUE_ENDED: "dialogue.ended",
+  DIALOGUE_EFFECT: "dialogue.effect",
   MISSION_OBJECTIVE_UPDATED: "mission.objective.updated",
   MISSION_COMPLETED: "mission.completed",
   RUMOR_STARTED: "rumor.started",
@@ -22,9 +24,13 @@ export const Events = {
   GAME_TIME_TICK: "time.tick",
   SAVE_REQUESTED: "save.requested",
   LOAD_COMPLETED: "load.completed",
+  STATE_CHANGED: "state.changed",
+  INPUT_INTERACT: "input.interact",
+  INPUT_POINTERLOCK: "input.pointerlock",
+  INPUT_LOOK: "input.look",
+  INPUT_WHEEL: "input.wheel",
   INTERACTION_AVAILABLE: "interaction.available",
-  INTERACTION_USED: "interaction.used",
-  PLAYER_MOVED: "player.moved",
+  INTERACTION_USED: "interaction.used"
 } as const;
 
 export type EventName = typeof Events[keyof typeof Events];
@@ -36,10 +42,7 @@ export class EventBus implements IEventBus {
   on<T = unknown>(event: string, handler: EventHandler<T>): () => void {
     const listener = handler as EventHandler<unknown>;
     let set = this.listeners.get(event);
-    if (!set) {
-      set = new Set();
-      this.listeners.set(event, set);
-    }
+    if (!set) { set = new Set(); this.listeners.set(event, set); }
     set.add(listener);
     return () => this.off(event, handler as EventHandler);
   }
@@ -48,14 +51,10 @@ export class EventBus implements IEventBus {
     const original = handler as EventHandler<unknown>;
     const wrapper: EventHandler<unknown> = (payload) => {
       this.off(event, original);
-      this.onceWrappers.get(event)?.delete(original);
       original(payload);
     };
     let wrappers = this.onceWrappers.get(event);
-    if (!wrappers) {
-      wrappers = new Map();
-      this.onceWrappers.set(event, wrappers);
-    }
+    if (!wrappers) { wrappers = new Map(); this.onceWrappers.set(event, wrappers); }
     wrappers.set(original, wrapper);
     this.on(event, wrapper);
   }
@@ -69,14 +68,14 @@ export class EventBus implements IEventBus {
   off(event: string, handler: EventHandler): void {
     const set = this.listeners.get(event);
     const listener = handler as EventHandler<unknown>;
-    if (set?.delete(listener) && set.size === 0) this.listeners.delete(event);
-
     const wrapper = this.onceWrappers.get(event)?.get(listener);
     if (wrapper) {
-      this.listeners.get(event)?.delete(wrapper);
+      set?.delete(wrapper);
       this.onceWrappers.get(event)?.delete(listener);
+    } else {
+      set?.delete(listener);
     }
-
+    if (set?.size === 0) this.listeners.delete(event);
     const wrappers = this.onceWrappers.get(event);
     if (wrappers?.size === 0) this.onceWrappers.delete(event);
   }
