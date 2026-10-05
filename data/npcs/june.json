@@ -1,0 +1,61 @@
+{
+  "npcId": "june",
+  "name": "June Mercer",
+  "archetype": "mechanic",
+  "personality": {
+    "openness": 0.58,
+    "conscientiousness": 0.74,
+    "extraversion": 0.62,
+    "agreeableness": 0.55,
+    "neuroticism": 0.48,
+    "traits": ["practical", "loyal", "funny", "guarded"]
+  },
+  "currentMood": {
+    "primary": "anxious",
+    "intensity": 0.46,
+    "decayRate": 0.08
+  },
+  "goals": [
+    {
+      "goalId": "save-garage",
+      "description": "Keep the garage open.",
+      "priority": 0.9,
+      "deadline": null,
+      "status": "active"
+    }
+  ],
+  "fears": ["losing the garage", "being dragged back into Elias's old life"],
+  "secrets": [],
+  "memories": [],
+  "relationships": {
+    "player": {
+      "targetId": "player",
+      "dimensions": {
+        "trust": 0.35,
+        "fear": 0.1,
+        "respect": 0.25,
+        "anger": 0.05,
+        "loyalty": 0.4,
+        "affection": 0.5,
+        "suspicion": 0.3
+      },
+      "historySummary": "Old friend who has not been seen in years.",
+      "lastSignificantEvent": null,
+      "relationshipType": "friend"
+    }
+  },
+  "routine": {
+    "currentActivity": "repairing a car",
+    "locationId": "garage",
+    "schedule": {
+      "08:00": "open garage",
+      "13:00": "parts run",
+      "19:00": "close garage",
+      "20:00": "repairing a car"
+    }
+  },
+  "trustThreshold": 0.55,
+  "suspicionThreshold": 0.4,
+  "intelligenceLevel": 0.72,
+  "lastUpdated": 0
+}
