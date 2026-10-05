@@ -3,6 +3,10 @@
  * Phase 1 Lock
  */
 
+import type { GameEffect } from "../core/Effects";
+
+export type MissionEffect = GameEffect;
+
 export interface MissionDefinition {
   missionId: string;
   act: number;
@@ -30,17 +34,6 @@ export interface MissionObjective {
   description: string;
   optional: boolean;
   completed?: boolean; // runtime
-}
-
-export interface MissionEffect {
-  type:
-    | 'set_flag'
-    | 'change_relationship'
-    | 'add_memory'
-    | 'unlock_mission'
-    | 'start_rumor'
-    | 'custom';
-  payload: Record<string, unknown>;
 }
 
 export interface MissionRuntimeState {
