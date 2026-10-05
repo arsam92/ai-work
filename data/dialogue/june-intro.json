@@ -10,8 +10,24 @@
       "tone": "guarded",
       "animationIntent": "nervous",
       "choices": [
-        { "id": "calm", "text": "I need to talk. Something happened to Jonah.", "nextNodeId": "jonah", "effects": [] },
-        { "id": "pressure", "text": "Someone searched your garage. What are you hiding?", "nextNodeId": "pressure", "effects": [] }
+        {
+          "id": "calm",
+          "text": "I need to talk. Something happened to Jonah.",
+          "nextNodeId": "jonah",
+          "effects": [
+            { "type": "change_relationship", "payload": { "targetId": "player", "delta": { "trust": 0.05, "suspicion": -0.05 } } },
+            { "type": "add_memory", "payload": { "eventType": "DIALOGUE", "description": "Elias came back asking about Jonah, calm and serious.", "emotion": "concern", "intensity": 0.4, "confidence": 0.9, "importance": 0.55 } }
+          ]
+        },
+        {
+          "id": "pressure",
+          "text": "Someone searched your garage. What are you hiding?",
+          "nextNodeId": "pressure",
+          "effects": [
+            { "type": "change_relationship", "payload": { "targetId": "player", "delta": { "suspicion": 0.15, "anger": 0.1 } } },
+            { "type": "add_memory", "payload": { "eventType": "DIALOGUE", "description": "Elias accused me of hiding something and demanded answers.", "emotion": "wary", "intensity": 0.5, "confidence": 0.9, "importance": 0.6 } }
+          ]
+        }
       ]
     },
     "jonah": {
@@ -22,9 +38,17 @@
       "animationIntent": "nervous",
       "choices": [
         { "id": "ask-keys", "text": "What keys?", "nextNodeId": "keys", "effects": [] },
-        { "id": "promise", "text": "I'll keep you out of this. Tell me what you know.", "nextNodeId": "keys", "effects": [
-          { "type": "set_flag", "payload": { "key": "june_promise_made", "value": true } }
-        ] }
+        {
+          "id": "promise",
+          "text": "I'll keep you out of this. Tell me what you know.",
+          "nextNodeId": "keys",
+          "effects": [
+            { "type": "set_flag", "payload": { "key": "june_promise_made", "value": true } },
+            { "type": "change_relationship", "payload": { "targetId": "player", "delta": { "trust": 0.1, "affection": 0.05 } } },
+            { "type": "add_memory", "payload": { "eventType": "DIALOGUE", "description": "Elias promised to keep me out of this.", "emotion": "warmth", "intensity": 0.45, "confidence": 0.95, "importance": 0.7 } },
+            { "type": "custom", "payload": { "action": "npc_promise", "promiseId": "june-promise-protection", "content": "Elias promised to keep June out of the investigation." } }
+          ]
+        }
       ]
     },
     "pressure": {
@@ -34,8 +58,24 @@
       "tone": "angry",
       "animationIntent": "step_back",
       "choices": [
-        { "id": "apologize", "text": "You're right. I should have asked first.", "nextNodeId": "jonah", "effects": [] },
-        { "id": "leave", "text": "Fine. I'll find the answers somewhere else.", "nextNodeId": null, "effects": [] }
+        {
+          "id": "apologize",
+          "text": "You're right. I should have asked first.",
+          "nextNodeId": "jonah",
+          "effects": [
+            { "type": "change_relationship", "payload": { "targetId": "player", "delta": { "anger": -0.1 } } },
+            { "type": "add_memory", "payload": { "eventType": "DIALOGUE", "description": "Elias apologized for pressuring me.", "emotion": "relief", "intensity": 0.3, "confidence": 0.9, "importance": 0.45 } }
+          ]
+        },
+        {
+          "id": "leave",
+          "text": "Fine. I'll find the answers somewhere else.",
+          "nextNodeId": null,
+          "effects": [
+            { "type": "change_relationship", "payload": { "targetId": "player", "delta": { "suspicion": 0.05 } } },
+            { "type": "add_memory", "payload": { "eventType": "DIALOGUE", "description": "Elias walked off angry, saying he'd find answers elsewhere.", "emotion": "wary", "intensity": 0.35, "confidence": 0.9, "importance": 0.45 } }
+          ]
+        }
       ]
     },
     "keys": {
@@ -45,9 +85,15 @@
       "tone": "quiet",
       "animationIntent": "avoid_eye_contact",
       "choices": [
-        { "id": "where", "text": "Where is the cage?", "nextNodeId": "end", "effects": [
-          { "type": "set_flag", "payload": { "key": "june_old_keys_lead", "value": true } }
-        ] }
+        {
+          "id": "where",
+          "text": "Where is the cage?",
+          "nextNodeId": "end",
+          "effects": [
+            { "type": "set_flag", "payload": { "key": "june_old_keys_lead", "value": true } },
+            { "type": "add_memory", "payload": { "eventType": "DIALOGUE", "description": "I told Elias about the storage cage behind the railway yard.", "emotion": "wary", "intensity": 0.4, "confidence": 0.95, "importance": 0.65 } }
+          ]
+        }
       ]
     },
     "end": {
