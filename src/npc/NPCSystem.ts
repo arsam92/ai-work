@@ -8,8 +8,15 @@ export class NPCSystem {
   private readonly npcStates = new Map<string, NPCState>();
 
   constructor(private readonly store: GameStore, private readonly bus: EventBus) {
-    this.bus.on<{ type: string; actors: string[]; location: string; payload?: Record<string, unknown> }>(Events.PLAYER_ACTION_OBSERVED, (event) => this.onPlayerAction(event));
-    this.bus.on<{ npcId: string; effect: GameEffect }>("dialogue.effect", ({ npcId, effect }) => this.applyDialogueEffect(npcId, effect));
+    this.bus.on<{ type: string; actors: string[]; observedBy?: string[]; location: string; payload?: Record<string, unknown> }>(
+      Events.PLAYER_ACTION_OBSERVED,
+      (event) => this.onPlayerAction(event)
+    );
+    this.bus.on<{ npcId: string; effect: GameEffect; decision?: unknown }>(
+      Events.DIALOGUE_EFFECT,
+      ({ npcId, effect }) => this.applyDialogueEffect(npcId, effect)
+    );
+    this.bus.on(Events.LOAD_COMPLETED, () => this.rehydrateFromStore());
   }
 
   addNPC(state: NPCState): void {
@@ -26,7 +33,10 @@ export class NPCSystem {
   recordMemory(npcId: string, memory: Omit<NPCMemory, "memoryId"> & { memoryId?: string }): void {
     const npc = this.npcStates.get(npcId);
     if (!npc) return;
-    const entry: NPCMemory = { ...memory, memoryId: memory.memoryId ?? `${npcId}-${Date.now()}-${npc.memories.length}` };
+    const entry: NPCMemory = {
+      ...memory,
+      memoryId: memory.memoryId ?? `${npcId}-${Date.now()}-${npc.memories.length}`
+    };
     npc.memories.push(entry);
     if (npc.memories.length > 120) {
       npc.memories.sort((a, b) => (b.importance * b.confidence) - (a.importance * a.confidence));
@@ -66,7 +76,10 @@ export class NPCSystem {
       npc.lastUpdated += seconds;
       for (const memory of npc.memories) {
         if (memory.decay.type === "none") continue;
-        memory.confidence = Math.max(memory.decay.minConfidence, memory.confidence - memory.decay.rate * (seconds / 3600));
+        memory.confidence = Math.max(
+          memory.decay.minConfidence,
+          memory.confidence - memory.decay.rate * (seconds / 3600)
+        );
       }
     }
     this.store.update((game) => {
@@ -74,22 +87,47 @@ export class NPCSystem {
     });
   }
 
-  private onPlayerAction(event: { type: string; actors: string[]; location: string; payload?: Record<string, unknown> }): void {
-    for (const npc of this.npcStates.values()) {
-      if (npc.routine.locationId !== event.location) continue;
-      this.recordMemory(npc.npcId, {
+  private onPlayerAction(event: { type: string; actors: string[]; observedBy?: string[]; location: string; payload?: Record<string, unknown> }): void {
+    const observerIds = event.observedBy && event.observedBy.length > 0
+      ? [...new Set(event.observedBy)]
+      : this.coLocatedNPCIds(event.location);
+
+    for (const npcId of observerIds) {
+      if (!this.npcStates.has(npcId)) continue;
+      const isDialogue = event.type === "DIALOGUE_CHOICE";
+      this.recordMemory(npcId, {
         timestamp: this.store.getState().gameTime,
         eventType: event.type,
         subject: "player",
         description: typeof event.payload?.description === "string" ? event.payload.description : event.type,
-        emotionalImpact: { emotion: "curiosity", intensity: 0.15 },
-        confidence: 0.65,
-        source: "direct_observation",
-        importance: 0.35,
-        relevanceTags: ["player", "observation"],
-        decay: { type: "exponential", rate: 0.04, minConfidence: 0.15 },
+        emotionalImpact: { emotion: "curiosity", intensity: isDialogue ? 0.25 : 0.15 },
+        confidence: isDialogue ? 0.9 : 0.65,
+        source: isDialogue ? "conversation" : "direct_observation",
+        importance: isDialogue ? 0.45 : 0.35,
+        relevanceTags: ["player", isDialogue ? "dialogue" : "observation"],
+        decay: {
+          type: "exponential",
+          rate: isDialogue ? 0.03 : 0.04,
+          minConfidence: isDialogue ? 0.2 : 0.15
+        },
         linkedMemories: []
       });
+    }
+  }
+
+  private coLocatedNPCIds(location: string): string[] {
+    const ids: string[] = [];
+    for (const npc of this.npcStates.values()) {
+      if (npc.routine.locationId === location) ids.push(npc.npcId);
+    }
+    return ids;
+  }
+
+  private rehydrateFromStore(): void {
+    const npcs = this.store.getState().npcs;
+    this.npcStates.clear();
+    for (const [npcId, npc] of Object.entries(npcs)) {
+      this.npcStates.set(npcId, structuredClone(npc));
     }
   }
 
@@ -97,8 +135,11 @@ export class NPCSystem {
     if (effect.type === "change_relationship") {
       const targetId = String(effect.payload.targetId ?? "player");
       const delta = effect.payload.delta;
-      if (delta && typeof delta === "object") this.changeRelationship(npcId, targetId, delta as Partial<Relationship["dimensions"]>);
+      if (delta && typeof delta === "object") {
+        this.changeRelationship(npcId, targetId, delta as Partial<Relationship["dimensions"]>);
+      }
     }
+
     if (effect.type === "add_memory") {
       const payload = effect.payload;
       this.recordMemory(npcId, {
@@ -106,7 +147,10 @@ export class NPCSystem {
         eventType: String(payload.eventType ?? "DIALOGUE"),
         subject: String(payload.subject ?? "player"),
         description: String(payload.description ?? "Important conversation event"),
-        emotionalImpact: { emotion: String(payload.emotion ?? "neutral"), intensity: Number(payload.intensity ?? 0.2) },
+        emotionalImpact: {
+          emotion: String(payload.emotion ?? "neutral"),
+          intensity: Number(payload.intensity ?? 0.2)
+        },
         confidence: Number(payload.confidence ?? 0.9),
         source: "conversation",
         importance: Number(payload.importance ?? 0.5),
@@ -128,6 +172,8 @@ export class NPCSystem {
   }
 
   private syncNPC(npc: NPCState): void {
-    this.store.update((game) => { game.npcs[npc.npcId] = structuredClone(npc); });
+    this.store.update((game) => {
+      game.npcs[npc.npcId] = structuredClone(npc);
+    });
   }
 }
