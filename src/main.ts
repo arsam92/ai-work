@@ -140,7 +140,5 @@ bus.on(Events.INTERACTION_AVAILABLE, (item) => {
 
 cameraRig.update(0, player.object.position);
 loop.start(() => {
-  // Three.js r186 removed PCFSoftShadowMap. Keep runtime state on the supported filter.
-  renderer.renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.renderer.render(renderer.scene, renderer.camera);
 });
