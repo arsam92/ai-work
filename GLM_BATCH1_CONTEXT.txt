@@ -1898,3 +1898,942 @@ BATCH 1 INSTRUCTION TO GLM:
 - Do not change docs/CONTRACTS.md or persistent GameState version without explicit approval.
 - Implement non-persistence Batch 1 work first.
 - For persistent dialogue history, provide a Contract Change Proposal if required rather than silently changing the contract.
+
+
+
+================================================================================
+LATEST SOURCE OVERRIDES — READ THESE AFTER THE EARLIER SECTIONS
+================================================================================
+BLACK MILE — GLM BATCH 1 LATEST SOURCE OVERRIDES
+Repository: arsam92/ai-work
+Branch: main
+
+IMPORTANT:
+- This file contains the CURRENT authoritative versions of the five files below.
+- It overrides older versions of the same files in any previous context bundle.
+- GLM has no GitHub access; these are the files it should work from.
+- Do not modify locked contracts or create a second GameState/EventBus.
+- Other files from GLM_BATCH1_CONTEXT.txt remain authoritative unless explicitly overridden here.
+
+
+================================================================================
+FILE: src/npc/NPCDecisionSystem.ts
+================================================================================
+import type { NPCState } from "./NPCState";
+
+export type NPCAction =
+  | "idle"
+  | "work"
+  | "approach"
+  | "avoid"
+  | "leave"
+  | "call_for_help"
+  | "investigate";
+
+export type SocialRequestAction = "accept" | "decline" | "ask_why" | "counteroffer";
+
+export interface NPCDecisionContext {
+  playerVisible: boolean;
+  playerDistance: number;
+  immediateDanger: number;
+  goalPressure: number;
+}
+
+export interface NPCDecision {
+  action: NPCAction;
+  reason: string;
+  targetId: string | null;
+  confidence: number;
+  animationIntent: string;
+}
+
+export interface SocialRequestContext {
+  request: string;
+  destination: string;
+  timeCost: number;
+  privacy: number;
+  danger: number;
+  urgency: number;
+  socialPressure: number;
+}
+
+export interface SocialRequestDecision {
+  action: SocialRequestAction;
+  reason: string;
+  targetId: string;
+  confidence: number;
+  animationIntent: string;
+}
+
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
+export function decideNPCAction(npc: NPCState, context: NPCDecisionContext): NPCDecision {
+  const relation = npc.relationships.player;
+  const trust = relation?.dimensions.trust ?? 0;
+  const fear = Math.max(context.immediateDanger, relation?.dimensions.fear ?? 0);
+  const suspicion = relation?.dimensions.suspicion ?? 0;
+
+  if (fear >= 0.85) {
+    return {
+      action: "call_for_help",
+      reason: "survival",
+      targetId: "player",
+      confidence: 0.95,
+      animationIntent: "fearful"
+    };
+  }
+
+  if (context.playerVisible && (fear >= 0.6 || suspicion >= Math.max(npc.suspicionThreshold, 0.65))) {
+    return {
+      action: context.playerDistance < 4 ? "avoid" : "leave",
+      reason: fear >= suspicion ? "fear" : "suspicion",
+      targetId: "player",
+      confidence: 0.82,
+      animationIntent: fear >= 0.6 ? "fearful" : "avoid_eye_contact"
+    };
+  }
+
+  if (context.playerVisible && trust >= npc.trustThreshold && context.playerDistance < 5) {
+    return {
+      action: "approach",
+      reason: "trusted_social_contact",
+      targetId: "player",
+      confidence: 0.78,
+      animationIntent: "idle"
+    };
+  }
+
+  if (context.goalPressure >= 0.7) {
+    return {
+      action: "investigate",
+      reason: "high_priority_goal",
+      targetId: null,
+      confidence: 0.7,
+      animationIntent: "idle"
+    };
+  }
+
+  return {
+    action: npc.routine.currentActivity ? "work" : "idle",
+    reason: "routine",
+    targetId: null,
+    confidence: 0.55,
+    animationIntent: "idle"
+  };
+}
+
+export function decideSocialRequest(
+  npc: NPCState,
+  context: SocialRequestContext
+): SocialRequestDecision {
+  const relation = npc.relationships.player;
+  const trust = clamp01(relation?.dimensions.trust ?? 0);
+  const fear = clamp01(relation?.dimensions.fear ?? 0);
+  const suspicion = clamp01(relation?.dimensions.suspicion ?? 0);
+  const affection = clamp01(relation?.dimensions.affection ?? 0);
+  const loyalty = clamp01(relation?.dimensions.loyalty ?? 0);
+
+  const activeGoalPressure = npc.goals.reduce(
+    (highest, goal) => goal.status === "active" ? Math.max(highest, clamp01(goal.priority)) : highest,
+    0
+  );
+
+  const risk = clamp01(Math.max(context.danger, fear));
+  const socialValue = clamp01(
+    trust * 0.38 +
+    affection * 0.18 +
+    loyalty * 0.16 +
+    context.urgency * 0.12 +
+    context.socialPressure * 0.16
+  );
+
+  const cost = clamp01(context.timeCost * 0.55 + context.privacy * 0.2 + risk * 0.25);
+  const confidenceBase = 0.55 + clamp01(npc.intelligenceLevel) * 0.35;
+
+  if (risk >= 0.8) {
+    return {
+      action: "decline",
+      reason: "immediate_safety_risk",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "fearful"
+    };
+  }
+
+  if (suspicion >= 0.68 && context.privacy >= 0.5) {
+    return {
+      action: "ask_why",
+      reason: "high_suspicion_private_request",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "avoid_eye_contact"
+    };
+  }
+
+  if (activeGoalPressure >= 0.8 && context.timeCost >= 0.2 && socialValue < 0.62) {
+    return {
+      action: "counteroffer",
+      reason: "protect_high_priority_goal",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "nervous"
+    };
+  }
+
+  if (socialValue >= 0.68 && cost <= 0.5 && suspicion < 0.55) {
+    return {
+      action: "accept",
+      reason: "relationship_overcomes_cost",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "idle"
+    };
+  }
+
+  if (socialValue >= 0.5 && suspicion < 0.65) {
+    return {
+      action: "ask_why",
+      reason: "needs_context_before_commitment",
+      targetId: "player",
+      confidence: confidenceBase,
+      animationIntent: "nervous"
+    };
+  }
+
+  return {
+    action: "decline",
+    reason: activeGoalPressure >= 0.65 ? "protect_current_priority" : "insufficient_trust",
+    targetId: "player",
+    confidence: confidenceBase,
+    animationIntent: "avoid_eye_contact"
+  };
+}
+
+
+================================================================================
+FILE: src/dialogue/DialogueSystem.ts
+================================================================================
+import { Events, type EventBus } from "../core/EventBus";
+import type { GameStore } from "../state/GameStore";
+import type { GameEffect } from "../core/Effects";
+import type { NPCState } from "../npc/NPCState";
+import { decideSocialRequest, type SocialRequestDecision } from "../npc/NPCDecisionSystem";
+import type { DialogueDefinition, DialogueState } from "./DialogueState";
+
+export interface DialoguePresenter {
+  show(title: string, text: string, choices: { id: string; text: string }[]): void;
+  hide(): void;
+}
+
+export interface NPCDialogueProvider {
+  getNPC(npcId: string): NPCState | null;
+}
+
+export interface DialogueHistoryEntry {
+  conversationId: string;
+  nodeId: string;
+  speakerId: string;
+  text: string;
+  gameTime: number;
+}
+
+export class DialogueSystem {
+  private active: DialogueState | null = null;
+  private definition: DialogueDefinition | null = null;
+  private currentNodeId: string | null = null;
+  private readonly sessionHistory: DialogueHistoryEntry[] = [];
+  private static readonly MAX_SESSION_HISTORY = 100;
+
+  constructor(
+    private readonly store: GameStore,
+    private readonly bus: EventBus,
+    private readonly presenter: DialoguePresenter,
+    private readonly npcProvider?: NPCDialogueProvider
+  ) {}
+
+  start(definition: DialogueDefinition): void {
+    this.definition = definition;
+    this.currentNodeId = definition.startNodeId;
+    this.sessionHistory.length = 0;
+    this.active = {
+      conversationId: definition.dialogueId,
+      participants: ["player", definition.npcId],
+      locationId: this.store.getState().player.locationId,
+      startTime: this.store.getState().gameTime,
+      moodAtStart: {},
+      activeTopics: [],
+      promises: [],
+      liesDetected: 0,
+      playerReputationInContext: {},
+      canRefuse: true,
+      willLie: false,
+      willManipulate: false,
+      exitConditions: []
+    };
+    this.bus.emit(Events.DIALOGUE_STARTED, this.active);
+    this.showCurrentNode();
+  }
+
+  choose(choiceId: string): void {
+    if (!this.definition || !this.currentNodeId || !this.active) return;
+
+    const node = this.definition.nodes[this.currentNodeId];
+    if (!node) {
+      this.end();
+      return;
+    }
+
+    const choice = node.choices.find((item) => item.id === choiceId);
+    if (!choice) return;
+
+    let nextNodeId = choice.nextNodeId;
+
+    for (const effect of choice.effects ?? []) {
+      const socialDecision = this.resolveSocialRequest(effect);
+      if (socialDecision) {
+        nextNodeId = this.selectSocialOutcome(effect, socialDecision, nextNodeId);
+        this.emitRelationshipOutcome(effect, socialDecision);
+        this.bus.emit(Events.DIALOGUE_EFFECT, {
+          npcId: this.definition.npcId,
+          effect,
+          decision: socialDecision
+        });
+        continue;
+      }
+
+      this.applyLocalEffect(effect);
+      this.bus.emit(Events.DIALOGUE_EFFECT, {
+        npcId: this.definition.npcId,
+        effect
+      });
+    }
+
+    if (nextNodeId === null) {
+      this.end();
+      return;
+    }
+
+    this.currentNodeId = nextNodeId;
+    this.showCurrentNode();
+  }
+
+  end(): void {
+    if (!this.active) return;
+    const finished = this.active;
+    this.active = null;
+    this.definition = null;
+    this.currentNodeId = null;
+    this.presenter.hide();
+    this.bus.emit(Events.DIALOGUE_ENDED, finished);
+  }
+
+  isActive(): boolean {
+    return this.active !== null;
+  }
+
+  getCurrentNodeId(): string | null {
+    return this.currentNodeId;
+  }
+
+  getSessionHistory(): DialogueHistoryEntry[] {
+    return structuredClone(this.sessionHistory);
+  }
+
+  private applyLocalEffect(effect: GameEffect): void {
+    if (effect.type !== "set_flag") return;
+    this.store.update((state) => {
+      state.flags[effect.payload.key] = effect.payload.value;
+    });
+  }
+
+  private showCurrentNode(): void {
+    if (!this.definition || !this.currentNodeId) return;
+    const node = this.definition.nodes[this.currentNodeId];
+    if (!node) {
+      this.end();
+      return;
+    }
+
+    this.sessionHistory.push({
+      conversationId: this.definition.dialogueId,
+      nodeId: node.id,
+      speakerId: node.speakerId,
+      text: node.text,
+      gameTime: this.store.getState().gameTime
+    });
+    if (this.sessionHistory.length > DialogueSystem.MAX_SESSION_HISTORY) {
+      this.sessionHistory.shift();
+    }
+
+    this.presenter.show(
+      node.speakerId === "player" ? "YOU" : node.speakerId,
+      node.text,
+      node.choices.map((choice) => ({ id: choice.id, text: choice.text }))
+    );
+  }
+
+  private resolveSocialRequest(effect: GameEffect): SocialRequestDecision | null {
+    if (effect.type !== "custom") return null;
+    if (effect.payload.action !== "npc_social_request") return null;
+    if (!this.definition || !this.npcProvider) {
+      return {
+        action: "decline",
+        reason: "no_npc_decision_provider",
+        targetId: "player",
+        confidence: 0.5,
+        animationIntent: "avoid_eye_contact"
+      };
+    }
+
+    const npc = this.npcProvider.getNPC(this.definition.npcId);
+    if (!npc) {
+      return {
+        action: "decline",
+        reason: "npc_unavailable",
+        targetId: "player",
+        confidence: 0.99,
+        animationIntent: "avoid_eye_contact"
+      };
+    }
+
+    const number = (key: string, fallback: number): number => {
+      const value = effect.payload[key];
+      return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+    };
+    const stringValue = (key: string, fallback: string): string => {
+      const value = effect.payload[key];
+      return typeof value === "string" ? value : fallback;
+    };
+
+    return decideSocialRequest(npc, {
+      request: stringValue("request", "social_request"),
+      destination: stringValue("destination", "unknown"),
+      timeCost: number("timeCost", 0.25),
+      privacy: number("privacy", 0.5),
+      danger: number("danger", 0),
+      urgency: number("urgency", 0.25),
+      socialPressure: number("socialPressure", 0.5)
+    });
+  }
+
+  private selectSocialOutcome(
+    effect: GameEffect,
+    decision: SocialRequestDecision,
+    fallback: string | null
+  ): string | null {
+    if (effect.type !== "custom") return fallback;
+    const outcomes = effect.payload.outcomes;
+    if (!outcomes || typeof outcomes !== "object") return fallback;
+    const next = (outcomes as Record<string, unknown>)[decision.action];
+    return typeof next === "string" ? next : fallback;
+  }
+
+  private emitRelationshipOutcome(effect: GameEffect, decision: SocialRequestDecision): void {
+    if (effect.type !== "custom") return;
+    const map = effect.payload.relationshipDeltaByOutcome;
+    if (!map || typeof map !== "object") return;
+    const delta = (map as Record<string, unknown>)[decision.action];
+    if (!delta || typeof delta !== "object") return;
+
+    const safeDelta: Record<string, unknown> = {};
+    for (const key of ["trust", "fear", "respect", "anger", "loyalty", "affection", "suspicion"]) {
+      const value = (delta as Record<string, unknown>)[key];
+      if (typeof value === "number" && Number.isFinite(value)) safeDelta[key] = value;
+    }
+
+    if (Object.keys(safeDelta).length === 0) return;
+    const relationshipEffect: GameEffect = {
+      type: "change_relationship",
+      payload: {
+        targetId: "player",
+        delta: safeDelta
+      }
+    };
+    this.bus.emit(Events.DIALOGUE_EFFECT, {
+      npcId: this.definition?.npcId ?? "unknown",
+      effect: relationshipEffect,
+      decision
+    });
+  }
+}
+
+
+================================================================================
+FILE: src/core/Input.ts
+================================================================================
+import type { EventBus } from "./EventBus";
+import { Events } from "./EventBus";
+
+type Action = "forward" | "back" | "left" | "right" | "run";
+
+export class Input {
+  private readonly keys = new Set<string>();
+  private pointerLocked = false;
+  private dialogueLocked = false;
+
+  constructor(private readonly bus: EventBus) {
+    this.bus.on(Events.DIALOGUE_STARTED, () => {
+      this.dialogueLocked = true;
+      this.keys.clear();
+      if (typeof document !== "undefined" && document.pointerLockElement) {
+        document.exitPointerLock();
+      }
+    });
+    this.bus.on(Events.DIALOGUE_ENDED, () => {
+      this.dialogueLocked = false;
+      this.keys.clear();
+    });
+  }
+
+  attach(target: HTMLElement): void {
+    const down = (event: KeyboardEvent): void => {
+      if (this.dialogueLocked) {
+        this.keys.clear();
+        return;
+      }
+
+      this.keys.add(event.code);
+      if (["KeyW","KeyA","KeyS","KeyD","ArrowUp","ArrowDown","ArrowLeft","ArrowRight","ShiftLeft","ShiftRight","KeyE"].includes(event.code)) {
+        event.preventDefault();
+      }
+      if (event.code === "KeyE" && !event.repeat) this.bus.emit(Events.INPUT_INTERACT);
+    };
+
+    const up = (event: KeyboardEvent): void => {
+      this.keys.delete(event.code);
+    };
+
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", () => this.keys.clear());
+
+    target.addEventListener("click", () => {
+      if (this.dialogueLocked) return;
+      if (document.pointerLockElement !== target) {
+        void target.requestPointerLock();
+      }
+    });
+
+    document.addEventListener("pointerlockchange", () => {
+      this.pointerLocked = document.pointerLockElement === target;
+      this.bus.emit(Events.INPUT_POINTERLOCK, this.pointerLocked);
+    });
+
+    document.addEventListener("mousemove", (event) => {
+      if (!this.pointerLocked || this.dialogueLocked) return;
+      this.bus.emit(Events.INPUT_LOOK, { dx: event.movementX, dy: event.movementY });
+    });
+
+    target.addEventListener("wheel", (event) => {
+      if (this.dialogueLocked) return;
+      event.preventDefault();
+      this.bus.emit(Events.INPUT_WHEEL, event.deltaY);
+    }, { passive: false });
+  }
+
+  isDown(action: Action): boolean {
+    if (this.dialogueLocked) return false;
+    const map: Record<Action, string[]> = {
+      forward: ["KeyW", "ArrowUp"],
+      back: ["KeyS", "ArrowDown"],
+      left: ["KeyA", "ArrowLeft"],
+      right: ["KeyD", "ArrowRight"],
+      run: ["ShiftLeft", "ShiftRight"]
+    };
+    return map[action].some((key) => this.keys.has(key));
+  }
+}
+
+
+================================================================================
+FILE: src/ui/GameUI.ts
+================================================================================
+import type { DialoguePresenter } from "../dialogue/DialogueSystem";
+import { Events, type EventBus } from "../core/EventBus";
+import type { GameStore } from "../state/GameStore";
+
+export class GameUI implements DialoguePresenter {
+  private readonly root: HTMLElement;
+  private readonly prompt: HTMLDivElement;
+  private readonly mission: HTMLDivElement;
+  private readonly dialogue: HTMLDivElement;
+  private readonly dialogueName: HTMLDivElement;
+  private readonly dialogueText: HTMLDivElement;
+  private readonly choices: HTMLDivElement;
+  private readonly status: HTMLDivElement;
+  private readonly saveButton: HTMLButtonElement;
+  private readonly loadButton: HTMLButtonElement;
+  private typingTimer: number | null = null;
+  private typingComplete = false;
+  private selectedChoiceIndex = 0;
+  private dialogueChoiceHandler: ((choiceId: string) => void) | null = null;
+  private dialogueCancelHandler: (() => void) | null = null;
+
+  constructor(
+    host: HTMLElement,
+    private readonly store: GameStore,
+    private readonly bus: EventBus,
+    onSave: () => Promise<void>,
+    onLoad: () => Promise<void>
+  ) {
+    this.root = host;
+    this.root.innerHTML = `
+      <div class="hud">
+        <div class="brand">BLACK MILE</div>
+        <div class="sub">VEYRA // NIGHT 01</div>
+        <div id="mission" class="mission"></div>
+        <div id="status" class="status">WASD MOVE · SHIFT RUN · CLICK LOOK · E TALK</div>
+        <div id="prompt" class="prompt"></div>
+        <div id="dialogue" class="dialogue hidden" aria-live="polite">
+          <div id="dialogue-name" class="dialogue-name"></div>
+          <div id="dialogue-text" class="dialogue-text"></div>
+          <div id="choices" class="choices"></div>
+          <div class="dialogue-help">↑ ↓ SELECT · ENTER TALK · 1-9 QUICK SELECT · ESC EXIT</div>
+        </div>
+        <div class="save-row">
+          <button id="save">SAVE</button>
+          <button id="load">LOAD</button>
+        </div>
+      </div>
+    `;
+
+    this.prompt = this.root.querySelector("#prompt") as HTMLDivElement;
+    this.mission = this.root.querySelector("#mission") as HTMLDivElement;
+    this.dialogue = this.root.querySelector("#dialogue") as HTMLDivElement;
+    this.dialogueName = this.root.querySelector("#dialogue-name") as HTMLDivElement;
+    this.dialogueText = this.root.querySelector("#dialogue-text") as HTMLDivElement;
+    this.choices = this.root.querySelector("#choices") as HTMLDivElement;
+    this.status = this.root.querySelector("#status") as HTMLDivElement;
+    this.saveButton = this.root.querySelector("#save") as HTMLButtonElement;
+    this.loadButton = this.root.querySelector("#load") as HTMLButtonElement;
+
+    this.saveButton.addEventListener("click", () => void onSave());
+    this.loadButton.addEventListener("click", () => void onLoad());
+
+    this.bus.on<{ id: string; label: string } | null>(Events.INTERACTION_AVAILABLE, (item) => {
+      this.prompt.textContent = item ? `[E] ${item.label}` : "";
+    });
+
+    this.bus.on<{ missionId: string }>(Events.MISSION_COMPLETED, ({ missionId }) => {
+      this.status.textContent = `MISSION COMPLETE // ${missionId.toUpperCase()}`;
+      window.setTimeout(() => this.refreshMission(), 2200);
+    });
+
+    this.bus.on<boolean>(Events.INPUT_POINTERLOCK, (locked) => {
+      if (!this.dialogue.classList.contains("hidden")) return;
+      this.status.textContent = locked
+        ? "WASD MOVE · SHIFT RUN · E TALK · ESC RELEASE"
+        : "WASD MOVE · SHIFT RUN · CLICK LOOK · E TALK";
+    });
+
+    window.addEventListener("keydown", (event) => this.handleDialogueKey(event));
+
+    this.refreshMission();
+  }
+
+  show(title: string, text: string, choices: { id: string; text: string }[]): void {
+    this.stopTyping();
+    this.typingComplete = false;
+    this.selectedChoiceIndex = 0;
+    this.dialogueName.textContent = title.replace(/-/g, " ").toUpperCase();
+    this.dialogueText.textContent = "";
+    this.choices.replaceChildren();
+
+    choices.forEach((choice, index) => {
+      const button = document.createElement("button");
+      button.textContent = `${index + 1}. ${choice.text}`;
+      button.dataset.choiceId = choice.id;
+      button.dataset.choiceIndex = String(index);
+      button.disabled = true;
+      this.choices.appendChild(button);
+    });
+
+    this.dialogue.classList.remove("hidden");
+    this.prompt.textContent = "";
+    this.status.textContent = "DIALOGUE // READING...";
+
+    const chars = Array.from(text);
+    let index = 0;
+    this.typingTimer = window.setInterval(() => {
+      if (index >= chars.length) {
+        this.finishTyping(choices.length > 0);
+        return;
+      }
+      this.dialogueText.textContent += chars[index];
+      index += 1;
+    }, 18);
+  }
+
+  hide(): void {
+    this.stopTyping();
+    this.dialogue.classList.add("hidden");
+    this.choices.replaceChildren();
+    this.refreshMission();
+    this.status.textContent = "WASD MOVE · SHIFT RUN · CLICK LOOK · E TALK";
+  }
+
+  bindDialogueChoice(handler: (choiceId: string) => void): void {
+    this.dialogueChoiceHandler = handler;
+    this.choices.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) return;
+      if (!this.typingComplete || target.disabled) {
+        this.finishTyping(true);
+        return;
+      }
+      const id = target.dataset.choiceId;
+      if (id) handler(id);
+    });
+  }
+
+  bindDialogueCancel(handler: () => void): void {
+    this.dialogueCancelHandler = handler;
+  }
+
+  refresh(): void {
+    this.refreshMission();
+  }
+
+  private handleDialogueKey(event: KeyboardEvent): void {
+    if (this.dialogue.classList.contains("hidden")) return;
+
+    if (event.code === "Escape") {
+      event.preventDefault();
+      this.dialogueCancelHandler?.();
+      return;
+    }
+
+    if (!this.typingComplete) {
+      if (event.code === "Space" || event.code === "Enter") {
+        event.preventDefault();
+        this.finishTyping(true);
+      }
+      return;
+    }
+
+    const buttons = Array.from(this.choices.querySelectorAll("button"));
+    if (buttons.length === 0) return;
+
+    if (event.code === "ArrowDown" || event.code === "ArrowRight") {
+      event.preventDefault();
+      this.selectedChoiceIndex = (this.selectedChoiceIndex + 1) % buttons.length;
+      this.focusChoice(buttons);
+      return;
+    }
+
+    if (event.code === "ArrowUp" || event.code === "ArrowLeft") {
+      event.preventDefault();
+      this.selectedChoiceIndex = (this.selectedChoiceIndex - 1 + buttons.length) % buttons.length;
+      this.focusChoice(buttons);
+      return;
+    }
+
+    if (event.code === "Enter") {
+      event.preventDefault();
+      const selected = buttons[this.selectedChoiceIndex];
+      if (selected?.dataset.choiceId) this.dialogueChoiceHandler?.(selected.dataset.choiceId);
+      return;
+    }
+
+    const match = event.code.match(/^Digit([1-9])$/);
+    if (match) {
+      const index = Number(match[1]) - 1;
+      const selected = buttons[index];
+      if (selected?.dataset.choiceId) {
+        event.preventDefault();
+        this.selectedChoiceIndex = index;
+        this.dialogueChoiceHandler?.(selected.dataset.choiceId);
+      }
+    }
+  }
+
+  private focusChoice(buttons: HTMLButtonElement[]): void {
+    buttons.forEach((button, index) => {
+      button.classList.toggle("selected", index === this.selectedChoiceIndex);
+    });
+    buttons[this.selectedChoiceIndex]?.focus();
+  }
+
+  private finishTyping(hasChoices: boolean): void {
+    if (this.typingComplete) return;
+    this.stopTyping();
+    const text = this.dialogueText.textContent ?? "";
+    this.dialogueText.textContent = text;
+    this.typingComplete = true;
+
+    const buttons = Array.from(this.choices.querySelectorAll("button"));
+    buttons.forEach((button) => { button.disabled = false; });
+    if (hasChoices) {
+      this.status.textContent = "DIALOGUE // CHOOSE RESPONSE";
+      this.focusChoice(buttons);
+    } else {
+      this.status.textContent = "DIALOGUE";
+    }
+  }
+
+  private stopTyping(): void {
+    if (this.typingTimer !== null) {
+      window.clearInterval(this.typingTimer);
+      this.typingTimer = null;
+    }
+  }
+
+  private refreshMission(): void {
+    const state = this.store.getState();
+    const active = state.missions.active[0];
+    if (!active) {
+      this.mission.textContent = "NO ACTIVE MISSION";
+      return;
+    }
+    const progress = state.missions.objectiveProgress[active] ?? {};
+    const done = Object.values(progress).filter(Boolean).length;
+    const total = Object.keys(progress).length;
+    this.mission.textContent = `MISSION // ${active.toUpperCase()}  [${done}/${total}]`;
+  }
+}
+
+
+================================================================================
+FILE: src/main.ts
+================================================================================
+import "../styles/main.css";
+import * as THREE from "three";
+import { EventBus, Events } from "./core/EventBus";
+import { Input } from "./core/Input";
+import { GameLoop } from "./core/GameLoop";
+import { createRenderer } from "./render/Renderer";
+import { createWorld } from "./world/World";
+import { CameraRig } from "./camera/CameraRig";
+import { PlayerController } from "./player/PlayerController";
+import { InteractionSystem } from "./interaction/InteractionSystem";
+import { DialogueSystem } from "./dialogue/DialogueSystem";
+import { NPCSystem } from "./npc/NPCSystem";
+import { MissionSystem } from "./missions/MissionSystem";
+import { BrowserSaveSystem } from "./save/SaveSystem";
+import { AnimationController } from "./animation/AnimationController";
+import { GameStore } from "./state/GameStore";
+import { createInitialGameState } from "./state/GameState";
+import type { NPCState } from "./npc/NPCState";
+import type { DialogueDefinition } from "./dialogue/DialogueState";
+import type { MissionDefinition } from "./missions/MissionSchema";
+import juneNPC from "../data/npcs/june.json";
+import juneDialogue from "../data/dialogue/june-intro.json";
+import oldKeysMission from "../data/missions/02-old-keys.json";
+import { GameUI } from "./ui/GameUI";
+
+const app = document.querySelector<HTMLElement>("#app");
+if (!app) throw new Error("Application root was not found.");
+
+const bus = new EventBus();
+const store = new GameStore(createInitialGameState(), bus);
+const saves = new BrowserSaveSystem();
+const renderer = createRenderer(app);
+const input = new Input(bus);
+input.attach(renderer.renderer.domElement);
+
+const world = createWorld(renderer.scene);
+const cameraRig = new CameraRig(renderer.camera, bus);
+const player = new PlayerController(bus, input.isDown.bind(input), cameraRig.getYaw.bind(cameraRig));
+player.object.position.copy(world.spawn);
+world.root.add(player.object);
+
+const npcSystem = new NPCSystem(store, bus);
+npcSystem.addNPC(juneNPC as NPCState);
+
+const juneMesh = new THREE.Group();
+juneMesh.name = "june";
+const juneBody = new THREE.Mesh(
+  new THREE.BoxGeometry(0.48, 1.1, 0.34),
+  new THREE.MeshLambertMaterial({ color: 0x694b3d })
+);
+juneBody.position.y = 0.95;
+const juneHead = new THREE.Mesh(
+  new THREE.SphereGeometry(0.2, 14, 12),
+  new THREE.MeshLambertMaterial({ color: 0x997c66 })
+);
+juneHead.position.y = 1.75;
+juneBody.castShadow = true;
+juneHead.castShadow = true;
+juneMesh.add(juneBody, juneHead);
+juneMesh.position.set(2.4, 0, -43);
+world.root.add(juneMesh);
+const juneAnimation = new AnimationController(juneMesh);
+
+const missionSystem = new MissionSystem(store, bus);
+missionSystem.register(oldKeysMission as MissionDefinition);
+missionSystem.start("old-keys");
+
+const ui = new GameUI(
+  app,
+  store,
+  bus,
+  async () => {
+    await saves.save("autosave", store.getState());
+    bus.emit(Events.SAVE_REQUESTED, { slot: "autosave" });
+  },
+  async () => {
+    try {
+      const loaded = await saves.load("autosave");
+      store.replace(loaded);
+      bus.emit(Events.LOAD_COMPLETED, { slot: "autosave" });
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+);
+
+const dialogue = new DialogueSystem(store, bus, ui, npcSystem);
+ui.bindDialogueChoice((choiceId) => dialogue.choose(choiceId));
+ui.bindDialogueCancel(() => dialogue.end());
+
+const interaction = new InteractionSystem(renderer.camera, player.object, bus);
+interaction.register({
+  id: "june",
+  label: "TALK TO JUNE",
+  position: juneMesh.position,
+  activate: () => {
+    if (!dialogue.isActive()) dialogue.start(juneDialogue as DialogueDefinition);
+  }
+});
+
+const loop = new GameLoop();
+let timeAccumulator = 0;
+loop.add({
+  update: (dt: number) => {
+    if (!dialogue.isActive()) {
+      player.update(dt);
+      cameraRig.update(dt, player.object.position);
+      interaction.update();
+    }
+    juneAnimation.update(dt);
+    timeAccumulator += dt;
+    if (timeAccumulator >= 0.25) {
+      const slice = timeAccumulator;
+      timeAccumulator = 0;
+      store.update((state) => {
+        state.gameTime += slice;
+        state.player.locationId = "black-mile";
+      });
+      bus.emit(Events.GAME_TIME_TICK, slice);
+      npcSystem.tick(slice);
+    }
+  }
+});
+
+bus.on(Events.MISSION_COMPLETED, () => {
+  ui.refresh();
+});
+
+bus.on(Events.INTERACTION_AVAILABLE, (item) => {
+  juneAnimation.setIntent(item && typeof item === "object" && "id" in item && item.id === "june" ? "nervous" : "idle");
+});
+
+cameraRig.update(0, player.object.position);
+loop.start(() => renderer.renderer.render(renderer.scene, renderer.camera));
+
+================================================================================
+END OF OVERRIDES
+================================================================================
+
+
+RULE: When a file appears in both sections, the version in LATEST SOURCE OVERRIDES is authoritative.
