@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { EventBus, Events } from "./core/EventBus";
 import { Input } from "./core/Input";
+import { GameLoop } from "./core/GameLoop";
 import { createRenderer } from "./render/Renderer";
 import { createWorld } from "./world/World";
 import { CameraRig } from "./camera/CameraRig";
@@ -14,12 +15,14 @@ import { AnimationController } from "./animation/AnimationController";
 import { GameStore } from "./state/GameStore";
 import { createInitialGameState } from "./state/GameState";
 import type { NPCState } from "./npc/NPCState";
+import type { DialogueDefinition } from "./dialogue/DialogueState";
+import type { MissionDefinition } from "./missions/MissionSchema";
 import juneNPC from "../data/npcs/june.json";
 import juneDialogue from "../data/dialogue/june-intro.json";
 import oldKeysMission from "../data/missions/02-old-keys.json";
 import { GameUI } from "./ui/GameUI";
 
-const app = document.querySelector("#app");
+const app = document.querySelector<HTMLElement>("#app");
 if (!app) throw new Error("Application root was not found.");
 
 const bus = new EventBus();
@@ -31,12 +34,7 @@ input.attach(renderer.renderer.domElement);
 
 const world = createWorld(renderer.scene);
 const cameraRig = new CameraRig(renderer.camera, bus);
-
-const player = new PlayerController(
-  bus,
-  input.isDown.bind(input),
-  cameraRig.getYaw.bind(cameraRig)
-);
+const player = new PlayerController(bus, input.isDown.bind(input), cameraRig.getYaw.bind(cameraRig));
 player.object.position.copy(world.spawn);
 world.root.add(player.object);
 
@@ -63,10 +61,13 @@ world.root.add(juneMesh);
 const juneAnimation = new AnimationController(juneMesh);
 
 const missionSystem = new MissionSystem(store, bus);
-missionSystem.register(oldKeysMission);
+missionSystem.register(oldKeysMission as MissionDefinition);
 missionSystem.start("old-keys");
 
-const ui = new GameUI(app, store, bus,
+const ui = new GameUI(
+  app,
+  store,
+  bus,
   async () => {
     await saves.save("autosave", store.getState());
     bus.emit(Events.SAVE_REQUESTED, { slot: "autosave" });
@@ -91,54 +92,41 @@ interaction.register({
   label: "TALK TO JUNE",
   position: juneMesh.position,
   activate: () => {
-    if (!dialogue.isActive()) dialogue.start(juneDialogue);
+    if (!dialogue.isActive()) dialogue.start(juneDialogue as DialogueDefinition);
   }
 });
 
-let previous = performance.now();
+const loop = new GameLoop();
 let timeAccumulator = 0;
-
-function frame(now: number): void {
-  requestAnimationFrame(frame);
-  const dt = Math.min((now - previous) / 1000, 0.05);
-  previous = now;
-
-  if (!dialogue.isActive()) {
-    player.update(dt);
-    cameraRig.update(dt, player.object.position);
-    interaction.update();
+loop.add({
+  update: (dt: number) => {
+    if (!dialogue.isActive()) {
+      player.update(dt);
+      cameraRig.update(dt, player.object.position);
+      interaction.update();
+    }
+    juneAnimation.update(dt);
+    timeAccumulator += dt;
+    if (timeAccumulator >= 0.25) {
+      const slice = timeAccumulator;
+      timeAccumulator = 0;
+      store.update((state) => {
+        state.gameTime += slice;
+        state.player.locationId = "black-mile";
+      });
+      bus.emit(Events.GAME_TIME_TICK, slice);
+      npcSystem.tick(slice);
+    }
   }
-
-  juneAnimation.update(dt);
-  renderer.renderer.render(renderer.scene, renderer.camera);
-
-  timeAccumulator += dt;
-  if (timeAccumulator >= 0.25) {
-    const slice = timeAccumulator;
-    timeAccumulator = 0;
-    store.update((state) => {
-      state.gameTime += slice;
-      state.player.locationId = "black-mile";
-    });
-    bus.emit(Events.GAME_TIME_TICK, slice);
-    npcSystem.tick(slice);
-  }
-}
-
-bus.on<{ missionId: string }>(Events.MISSION_COMPLETED, () => {
-  store.update((state) => {
-    state.flags.story_old_keys_complete = true;
-  });
 });
 
-bus.on(Events.DIALOGUE_ENDED, () => {
-  if (!missionSystem.isCompleted("old-keys")) return;
-  juneAnimation.setIntent("idle");
+bus.on(Events.MISSION_COMPLETED, () => {
+  ui.refresh();
 });
 
-bus.on<{ id: string } | null>(Events.INTERACTION_AVAILABLE, (item) => {
-  juneAnimation.setIntent(item?.id === "june" ? "nervous" : "idle");
+bus.on(Events.INTERACTION_AVAILABLE, (item) => {
+  juneAnimation.setIntent(item && typeof item === "object" && "id" in item && item.id === "june" ? "nervous" : "idle");
 });
 
 cameraRig.update(0, player.object.position);
-requestAnimationFrame(frame);
+loop.start(() => renderer.renderer.render(renderer.scene, renderer.camera));
