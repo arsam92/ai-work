@@ -22,7 +22,7 @@ export function createRenderer(container: HTMLElement): RendererHandle {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
 
