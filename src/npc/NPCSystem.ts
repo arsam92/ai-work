@@ -1,22 +1,21 @@
 import type { EventBus } from "../core/EventBus";
 import { Events } from "../core/EventBus";
 import type { GameStore } from "../state/GameStore";
+import type { MissionEffect } from "../missions/MissionSchema";
 import type { NPCMemory, NPCState, Relationship } from "./NPCState";
 
 export class NPCSystem {
   private readonly npcStates = new Map<string, NPCState>();
 
   constructor(private readonly store: GameStore, private readonly bus: EventBus) {
-    this.bus.on<{ type: string; actors: string[]; location: string; payload?: Record<string, unknown> }>(
-      Events.PLAYER_ACTION_OBSERVED,
-      (event) => this.onPlayerAction(event)
-    );
+    this.bus.on<{ type: string; actors: string[]; location: string; payload?: Record<string, unknown> }>(Events.PLAYER_ACTION_OBSERVED, (event) => this.onPlayerAction(event));
+    this.bus.on<{ npcId: string; effect: MissionEffect }>("dialogue.effect", ({ npcId, effect }) => this.applyDialogueEffect(npcId, effect));
   }
 
   addNPC(state: NPCState): void {
     const copy = structuredClone(state);
     this.npcStates.set(copy.npcId, copy);
-    this.store.update((game) => { game.npcs[copy.npcId] = structuredClone(copy); });
+    this.syncNPC(copy);
   }
 
   getNPC(npcId: string): NPCState | null {
@@ -69,8 +68,10 @@ export class NPCSystem {
         if (memory.decay.type === "none") continue;
         memory.confidence = Math.max(memory.decay.minConfidence, memory.confidence - memory.decay.rate * (seconds / 3600));
       }
-      this.store.update((game) => { game.npcs[npc.npcId] = structuredClone(npc); });
     }
+    this.store.update((game) => {
+      for (const [id, state] of this.npcStates) game.npcs[id] = structuredClone(state);
+    });
   }
 
   private onPlayerAction(event: { type: string; actors: string[]; location: string; payload?: Record<string, unknown> }): void {
@@ -87,6 +88,30 @@ export class NPCSystem {
         importance: 0.35,
         relevanceTags: ["player", "observation"],
         decay: { type: "exponential", rate: 0.04, minConfidence: 0.15 },
+        linkedMemories: []
+      });
+    }
+  }
+
+  private applyDialogueEffect(npcId: string, effect: MissionEffect): void {
+    if (effect.type === "change_relationship") {
+      const targetId = String(effect.payload.targetId ?? "player");
+      const delta = effect.payload.delta;
+      if (delta && typeof delta === "object") this.changeRelationship(npcId, targetId, delta as Partial<Relationship["dimensions"]>);
+    }
+    if (effect.type === "add_memory") {
+      const payload = effect.payload;
+      this.recordMemory(npcId, {
+        timestamp: this.store.getState().gameTime,
+        eventType: String(payload.eventType ?? "DIALOGUE"),
+        subject: String(payload.subject ?? "player"),
+        description: String(payload.description ?? "Important conversation event"),
+        emotionalImpact: { emotion: String(payload.emotion ?? "neutral"), intensity: Number(payload.intensity ?? 0.2) },
+        confidence: Number(payload.confidence ?? 0.9),
+        source: "conversation",
+        importance: Number(payload.importance ?? 0.5),
+        relevanceTags: Array.isArray(payload.relevanceTags) ? payload.relevanceTags.map(String) : ["dialogue"],
+        decay: { type: "exponential", rate: 0.03, minConfidence: 0.2 },
         linkedMemories: []
       });
     }
