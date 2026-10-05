@@ -84,8 +84,9 @@ const ui = new GameUI(
   }
 );
 
-const dialogue = new DialogueSystem(store, bus, ui);
+const dialogue = new DialogueSystem(store, bus, ui, npcSystem);
 ui.bindDialogueChoice((choiceId) => dialogue.choose(choiceId));
+ui.bindDialogueCancel(() => dialogue.end());
 
 const interaction = new InteractionSystem(renderer.camera, player.object, bus);
 interaction.register({
