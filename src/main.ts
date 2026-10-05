@@ -1,3 +1,4 @@
+import "../styles/main.css";
 import * as THREE from "three";
 import { EventBus, Events } from "./core/EventBus";
 import { Input } from "./core/Input";
