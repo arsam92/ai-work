@@ -1,5 +1,6 @@
 import type { NPCState } from "../npc/NPCState";
 import type { GameEffect } from "../core/Effects";
+import type { AnimationIntent } from "../animation/AnimationController";
 
 export interface DialogueState {
   conversationId: string;
@@ -30,7 +31,7 @@ export interface DialogueLine {
   speakerId: string;
   text: string;
   tone: string;
-  animationIntent?: string;
+  animationIntent?: AnimationIntent;
   effects?: GameEffect[];
 }
 
